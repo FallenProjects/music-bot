@@ -116,7 +116,7 @@ install_tgmusicbot() {
         error_exit "At least one STRING is required"
     fi
 
-    API_URL=$(ask_env "API_URL" "Enter API URL" "https://tgmusic.fallenapi.fun" validate_url)
+    API_URL=$(ask_env "API_URL" "Enter API URL" "https://api.fallenapi.fun" validate_url)
     API_KEY=$(ask_env "API_KEY" "Enter API key (leave empty if not using)" "" "" "true")
     PROXY=$(ask_env "PROXY" "Enter proxy URL (leave empty if not using)" "" validate_url)
     DEFAULT_SERVICE=$(ask_env "DEFAULT_SERVICE" "Enter default service" "youtube")

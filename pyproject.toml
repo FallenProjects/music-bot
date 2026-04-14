@@ -1,6 +1,6 @@
 [project]
-name = "tgmusicbot"
-version = "1.2.4"
+name = "music-bot"
+version = "1.2.5"
 description = "Telegram Music Bot with full playback support using PyTdBot and PyTgCalls"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,7 +61,7 @@ dev = [
 ]
 
 [project.scripts]
-start = "TgMusic.__main__:main"
+start = "src.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/FallenProjects/music-bot"
@@ -76,5 +76,5 @@ pytdbot = { git = "https://github.com/pytdbot/client", rev = "main" }
 
 [tool.setuptools]
 packages = [
-    "TgMusic",
+    "src",
 ]

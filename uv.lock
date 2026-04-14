@@ -659,6 +659,62 @@ wheels = [
 ]
 
 [[package]]
+name = "music-bot"
+version = "1.2.5"
+source = { editable = "." }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "cachetools" },
+    { name = "httpx" },
+    { name = "kurigram" },
+    { name = "ntgcalls" },
+    { name = "pillow" },
+    { name = "psutil" },
+    { name = "py-tgcalls" },
+    { name = "py-yt-search" },
+    { name = "pycryptodome" },
+    { name = "pydantic" },
+    { name = "pymongo" },
+    { name = "pytdbot" },
+    { name = "pytgcrypto" },
+    { name = "python-dotenv" },
+    { name = "tdjson" },
+    { name = "ujson" },
+    { name = "yt-dlp" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "black" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles", specifier = ">=25.1.0" },
+    { name = "black", marker = "extra == 'dev'" },
+    { name = "cachetools", specifier = ">=7.0.5" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "kurigram", specifier = ">=2.2.21" },
+    { name = "ntgcalls", specifier = ">=2.1.0" },
+    { name = "pillow", specifier = ">=12.2.0" },
+    { name = "psutil", specifier = ">=7.2.2" },
+    { name = "py-tgcalls", specifier = ">=2.2.11" },
+    { name = "py-yt-search", specifier = "==0.7.0b2" },
+    { name = "pycryptodome", specifier = ">=3.23.0" },
+    { name = "pydantic", specifier = ">=2.13.0" },
+    { name = "pymongo", specifier = ">=4.16.0" },
+    { name = "pytdbot", git = "https://github.com/pytdbot/client?rev=main" },
+    { name = "pytgcrypto", specifier = ">=1.2.12" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "tdjson", specifier = "==1.8.63" },
+    { name = "ujson", specifier = ">=5.12.0" },
+    { name = "yt-dlp", specifier = ">=2026.4.10.235301.dev0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "mypy-extensions"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1423,62 +1479,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/80/aa77fe619655f223baaffd610ee80490d0b47c781255878c7aa27f974b4b/tdjson-1.8.63-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a145150a16f0fa26b54d34462a5c36860257f578974b14afe2ef82925fa6c0aa", size = 16834269, upload-time = "2026-04-03T16:13:24.485Z" },
     { url = "https://files.pythonhosted.org/packages/bc/a0/dbd4fccc2bc5c0b68a1746f27d1dea38e4469585c4b01ed2eba1c8c7e905/tdjson-1.8.63-cp313-cp313t-win_amd64.whl", hash = "sha256:c972efe97235e48263bf49f98291fec2242a7ddfddb0c14086cb48af2c2b3f7e", size = 12111848, upload-time = "2026-04-03T16:13:27.676Z" },
 ]
-
-[[package]]
-name = "tgmusicbot"
-version = "1.2.4"
-source = { editable = "." }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "cachetools" },
-    { name = "httpx" },
-    { name = "kurigram" },
-    { name = "ntgcalls" },
-    { name = "pillow" },
-    { name = "psutil" },
-    { name = "py-tgcalls" },
-    { name = "py-yt-search" },
-    { name = "pycryptodome" },
-    { name = "pydantic" },
-    { name = "pymongo" },
-    { name = "pytdbot" },
-    { name = "pytgcrypto" },
-    { name = "python-dotenv" },
-    { name = "tdjson" },
-    { name = "ujson" },
-    { name = "yt-dlp" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "black" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "black", marker = "extra == 'dev'" },
-    { name = "cachetools", specifier = ">=7.0.5" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "kurigram", specifier = ">=2.2.21" },
-    { name = "ntgcalls", specifier = ">=2.1.0" },
-    { name = "pillow", specifier = ">=12.2.0" },
-    { name = "psutil", specifier = ">=7.2.2" },
-    { name = "py-tgcalls", specifier = ">=2.2.11" },
-    { name = "py-yt-search", specifier = "==0.7.0b2" },
-    { name = "pycryptodome", specifier = ">=3.23.0" },
-    { name = "pydantic", specifier = ">=2.13.0" },
-    { name = "pymongo", specifier = ">=4.16.0" },
-    { name = "pytdbot", git = "https://github.com/pytdbot/client?rev=main" },
-    { name = "pytgcrypto", specifier = ">=1.2.12" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "tdjson", specifier = "==1.8.63" },
-    { name = "ujson", specifier = ">=5.12.0" },
-    { name = "yt-dlp", specifier = ">=2026.4.10.235301.dev0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "tomli"

@@ -1,6 +1,6 @@
-# 🎵 TgMusicBot – Telegram Music Bot [![Stars](https://img.shields.io/github/stars/FallenProjects/music-bot?style=social)](https://github.com/FallenProjects/music-bot/stargazers)
+# 🎵 TgMusic – Telegram Music Bot [![Stars](https://img.shields.io/github/stars/FallenProjects/music-bot?style=social)](https://github.com/FallenProjects/music-bot/stargazers)
 
-**TgMusicBot** is a high-performance Telegram music bot designed for seamless music streaming in voice chats. It leverages a powerful combination of libraries, using `pytdbot` for efficient interaction with the Telegram Bot API and a multi-assistant architecture powered by `pyrogram` and `py-tgcalls` for robust, low-latency audio and video playback.
+**TgMusic** is a high-performance Telegram music bot designed for seamless music streaming in voice chats. It leverages a powerful combination of libraries, using `pytdbot` for efficient interaction with the Telegram Bot API and a multi-assistant architecture powered by `pyrogram` and `py-tgcalls` for robust, low-latency audio and video playback.
 
 It supports a wide range of music sources, including YouTube, Spotify, JioSaavn, Apple Music, and SoundCloud, making it a versatile solution for any Telegram community.
 
@@ -78,8 +78,8 @@ It supports a wide range of music sources, including YouTube, Spotify, JioSaavn,
 A brief overview of the key directories in this project:
 
 ```
-TgMusicBot/
-├── TgMusic/
+music-bot/
+├── src/
 │   ├── core/         # Core logic: call handling, database, API clients, config
 │   ├── modules/      # Bot commands and feature modules
 │   │   ├── utils/    # Utility functions for modules
@@ -92,8 +92,8 @@ TgMusicBot/
 ├── README.md         # This file
 └── ...
 ```
-- **`TgMusic/core`**: Contains the essential backend components. This is where the main logic for handling calls, database interactions, and communication with external music services resides.
-- **`TgMusic/modules`**: Holds the individual command handlers. Each `.py` file typically corresponds to a specific bot command (e.g., `play.py`, `skip.py`) or a feature set (e.g., `auth.py`).
+- **`src/core`**: Contains the essential backend components. This is where the main logic for handling calls, database interactions, and communication with external music services resides.
+- **`src/modules`**: Holds the individual command handlers. Each `.py` file typically corresponds to a specific bot command (e.g., `play.py`, `skip.py`) or a feature set (e.g., `auth.py`).
 
 ---
 
@@ -118,7 +118,7 @@ TgMusicBot/
 ### 🚀 Quick Setup
 1. Clone the repository:
    ```sh
-   git clone https://github.com/FallenProjects/music-bot.git && cd TgMusicBot
+   git clone https://github.com/FallenProjects/music-bot.git && cd music-bot
    ```
 
 ### 🔧 Configuration
@@ -145,39 +145,39 @@ TgMusicBot/
 ### 🏗️ Build & Run
 1. Build Docker image:
    ```sh
-   docker build -t tgmusicbot .
+   docker build -t music-bot .
    ```
 
 2. Run container (auto-restarts on crash/reboot):
    ```sh
-   docker run -d --name tgmusicbot --env-file .env --restart unless-stopped tgmusicbot
+   docker run -d --name music-bot --env-file .env --restart unless-stopped music-bot
    ```
 
 ### 🔍 Monitoring
 1. Check logs:
    ```sh
-   docker logs -f tgmusicbot
+   docker logs -f music-bot
    ```
    (Exit with `Ctrl+C`)
 
 ### ⚙️ Management Commands
 - **Stop container**:
   ```sh
-  docker stop tgmusicbot
+  docker stop music-bot
   ```
 
 - **Start container**:
   ```sh
-  docker start tgmusicbot
+  docker start music-bot
   ```
 
 - **Update the bot**:
   ```sh
-  docker stop tgmusicbot
-  docker rm tgmusicbot
+  docker stop music-bot
+  docker rm music-bot
   git pull origin master
-  docker build -t tgmusicbot .
-  docker run -d --name tgmusicbot --env-file .env --restart unless-stopped tgmusicbot
+  docker build -t music-bot .
+  docker run -d --name music-bot --env-file .env --restart unless-stopped music-bot
   ```
 
 </details>
@@ -205,7 +205,7 @@ TgMusicBot/
 
 2. **Clone the repository**:
    ```sh
-   git clone https://github.com/FallenProjects/music-bot.git && cd TgMusicBot
+   git clone https://github.com/FallenProjects/music-bot.git && cd music-bot
    ```
 
 ### 🐍 Python Environment
@@ -294,7 +294,7 @@ start
 | `API_KEY`          | API Key                                                           | Start [@FallenApiBot](https://t.me/FallenApiBot) and type `/apikey`                                                                                                         |
 | `MIN_MEMBER_COUNT` | Minimum number of members required to use the bot                 | Default: 50                                                                                                                                                                 |
 | `PROXY`            | Proxy URL for the bot if you want to use it for yt-dlp (Optional) | Any online service                                                                                                                                                          |
-| `COOKIES_URL`      | Cookies URL for the bot                                           | [![Cookie Guide](https://img.shields.io/badge/Guide-Read%20Here-blue?style=flat-square)](https://github.com/FallenProjects/music-bot/blob/master/TgMusic/cookies/README.md) |
+| `COOKIES_URL`      | Cookies URL for the bot                                           | [![Cookie Guide](https://img.shields.io/badge/Guide-Read%20Here-blue?style=flat-square)](https://github.com/FallenProjects/music-bot/blob/master/src/cookies/README.md) |
 | `DEFAULT_SERVICE`  | Default search platform (Options: youtube, spotify, jiosaavn)     | Default: youtube                                                                                                                                                            |
 | `SUPPORT_GROUP`    | Telegram Group Link                                               | Default: https://t.me/GuardxSupport                                                                                                                                         |
 | `SUPPORT_CHANNEL`  | Telegram Channel Link                                             | Default: https://t.me/FallenProjects                                                                                                                                        |

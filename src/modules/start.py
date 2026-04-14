@@ -144,7 +144,7 @@ async def callback_query_help(c: Client, message: types.UpdateNewCallbackQuery) 
     data = message.payload.data.decode()
 
     if data == "help_all":
-        user = await c.getUser(message.sender_user_id)
+        user = await c.getUser(user_id=message.sender_user_id)
         await message.answer("📚 Opening Help Menu...")
         text = (
             f"👋 <b>Hello {user.first_name}!</b>\n\n"

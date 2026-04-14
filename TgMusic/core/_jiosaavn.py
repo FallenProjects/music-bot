@@ -100,12 +100,10 @@ class JiosaavnData(MusicService):
         if not self.query:
             return types.Error(code=400, message="Search query cannot be empty")
 
-        # Handle direct URL searches
         if self.is_valid():
             return await self.get_info()
 
         try:
-            # Make API request to JioSaavn search endpoint
             response = await HttpxClient().make_request(
                 self.API_SEARCH_ENDPOINT.format(query=self.query)
             )
@@ -122,7 +120,7 @@ class JiosaavnData(MusicService):
                 if track
             ]
             return PlatformTracks(
-                tracks=[MusicTrack(**track) for track in formatted_tracks]
+                results=[MusicTrack(**track) for track in formatted_tracks]
             )
 
         except Exception as error:
@@ -170,8 +168,6 @@ class JiosaavnData(MusicService):
         """
         if not self.query:
             return types.Error(code=400, message="No track identifier provided")
-
-        # Normalize URL format
         url = self.query if self.is_valid() else self.format_jiosaavn_url(self.query)
 
         data = await self.get_track_data(url)
@@ -181,13 +177,10 @@ class JiosaavnData(MusicService):
         track_data = data["results"][0]
         return TrackInfo(
             cdnurl=track_data.get("cdnurl", ""),
-            key="nil",
-            name=track_data.get("name", ""),
-            tc=track_data.get("id", ""),
-            cover=track_data.get("cover", ""),
-            duration=track_data.get("duration", self.DEFAULT_DURATION),
+            id=track_data.get("id", ""),
             url=track_data.get("url", ""),
             platform="jiosaavn",
+            key="",
         )
 
     async def get_track_data(self, url: str) -> Optional[dict[str, Any]]:
@@ -260,13 +253,13 @@ class JiosaavnData(MusicService):
                 code=400, message=f"No download URL available for track: {track.tc}"
             )
 
-        download_path = config.DOWNLOADS_DIR / f"{track.tc}.m4a"
+        download_path = config.DOWNLOADS_DIR / f"{track.id}.m4a"
         result = await HttpxClient(max_redirects=1).download_file(
             track.cdnurl, download_path
         )
 
         if not result.success:
-            error_msg = result.error or f"Download failed for track: {track.tc}"
+            error_msg = result.error or f"Download failed for track: {track.id}"
             LOGGER.error(error_msg)
             return types.Error(code=500, message=error_msg)
 
@@ -316,20 +309,14 @@ class JiosaavnData(MusicService):
         if not track_data:
             return {}
 
-        # Get best available audio format
         formats = track_data.get("formats", [])
         best_format = max(formats, key=lambda x: x.get("abr", 0), default={})
-        # Generate display ID from title and URL
         title = track_data.get("title", "")
         url_parts = track_data.get("url", "").split("/")
         display_id = f"{title}/{url_parts[-1]}" if url_parts else title
 
         return {
             "id": track_data.get("display_id", display_id),
-            "tc": track_data.get("display_id", display_id),
-            "name": title,
-            "duration": track_data.get("duration", cls.DEFAULT_DURATION),
-            "cover": track_data.get("thumbnail", ""),
             "platform": "jiosaavn",
             "url": track_data.get("webpage_url", ""),
             "cdnurl": best_format.get("url", ""),
@@ -356,5 +343,5 @@ class JiosaavnData(MusicService):
             return types.Error(code=404, message="No valid tracks found in response")
 
         return PlatformTracks(
-            tracks=[MusicTrack(**track) for track in data["results"] if track]
+            results=[MusicTrack(**track) for track in data["results"] if track]
         )

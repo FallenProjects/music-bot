@@ -7,12 +7,10 @@ import asyncio
 from datetime import datetime
 
 from pytdbot import Client, types
+from TgMusic.core import call, config, db, tg
 
 __version__ = "1.2.4"
 StartTime = datetime.now()
-
-from TgMusic.core import call, config, db, tg
-
 
 class Bot(Client):
     """The main bot class, inheriting from `pytdbot.Client`.

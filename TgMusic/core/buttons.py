@@ -10,7 +10,7 @@ from pytdbot import types
 from ._config import config
 
 CLOSE_BTN = types.InlineKeyboardButton(
-    text="Cʟᴏsᴇ", type=types.InlineKeyboardButtonTypeCallback(b"vcplay_close")
+    text="Cʟᴏsᴇ", type=types.InlineKeyboardButtonTypeCallback(data=b"vcplay_close")
 )
 
 
@@ -36,7 +36,7 @@ def control_buttons(
     def btn(text: str, name: str) -> types.InlineKeyboardButton:
         return types.InlineKeyboardButton(
             text=text,
-            type=types.InlineKeyboardButtonTypeCallback(f"play_{name}".encode()),
+            type=types.InlineKeyboardButtonTypeCallback(data=f"play_{name}".encode()),
         )
 
     skip_btn = btn("‣‣I", "skip")
@@ -50,52 +50,52 @@ def control_buttons(
         "resume": [[skip_btn, stop_btn, pause_btn], [CLOSE_BTN]],
     }
 
-    return types.ReplyMarkupInlineKeyboard(layouts.get(mode, [[CLOSE_BTN]]))
+    return types.ReplyMarkupInlineKeyboard(rows=layouts.get(mode, [[CLOSE_BTN]]))
 
 
 CHANNEL_BTN = types.InlineKeyboardButton(
-    text="ᴜᴘᴅᴀᴛᴇꜱ", type=types.InlineKeyboardButtonTypeUrl(config.SUPPORT_CHANNEL)
+    text="ᴜᴘᴅᴀᴛᴇꜱ", type=types.InlineKeyboardButtonTypeUrl(url=config.SUPPORT_CHANNEL)
 )
 
 GROUP_BTN = types.InlineKeyboardButton(
-    text="ꜱᴜᴘᴘᴏʀᴛ", type=types.InlineKeyboardButtonTypeUrl(config.SUPPORT_GROUP)
+    text="ꜱᴜᴘᴘᴏʀᴛ", type=types.InlineKeyboardButtonTypeUrl(url=config.SUPPORT_GROUP)
 )
 
 HELP_BTN = types.InlineKeyboardButton(
-    text="Hᴇʟᴘ & Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(b"help_all")
+    text="Hᴇʟᴘ & Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_all")
 )
 
 USER_BTN = types.InlineKeyboardButton(
-    text="Uꜱᴇʀ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(b"help_user")
+    text="Uꜱᴇʀ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_user")
 )
 
 ADMIN_BTN = types.InlineKeyboardButton(
-    text="Aᴅᴍɪɴ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(b"help_admin")
+    text="Aᴅᴍɪɴ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_admin")
 )
 
 OWNER_BTN = types.InlineKeyboardButton(
-    text="Oᴡɴᴇʀ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(b"help_owner")
+    text="Oᴡɴᴇʀ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_owner")
 )
 
 DEVS_BTN = types.InlineKeyboardButton(
-    text="Dᴇᴠꜱ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(b"help_devs")
+    text="Dᴇᴠꜱ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_devs")
 )
 
 HOME_BTN = types.InlineKeyboardButton(
-    text="Hᴏᴍᴇ", type=types.InlineKeyboardButtonTypeCallback(b"help_back")
+    text="Hᴏᴍᴇ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_back")
 )
 
-SupportButton = types.ReplyMarkupInlineKeyboard([[CHANNEL_BTN, GROUP_BTN], [CLOSE_BTN]])
+SupportButton = types.ReplyMarkupInlineKeyboard(rows=[[CHANNEL_BTN, GROUP_BTN], [CLOSE_BTN]])
 
 HelpMenu = types.ReplyMarkupInlineKeyboard(
-    [
+    rows=[
         [USER_BTN, ADMIN_BTN],
         [OWNER_BTN, DEVS_BTN],
         [CLOSE_BTN, HOME_BTN],
     ]
 )
 
-BackHelpMenu = types.ReplyMarkupInlineKeyboard([[HELP_BTN, HOME_BTN], [CLOSE_BTN]])
+BackHelpMenu = types.ReplyMarkupInlineKeyboard(rows=[[HELP_BTN, HOME_BTN], [CLOSE_BTN]])
 
 
 # ─────────────────────
@@ -118,12 +118,12 @@ def add_me_markup(username: str) -> types.ReplyMarkupInlineKeyboard:
             start message.
     """
     return types.ReplyMarkupInlineKeyboard(
-        [
+        rows=[
             [
                 types.InlineKeyboardButton(
                     text="Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ",
                     type=types.InlineKeyboardButtonTypeUrl(
-                        f"https://t.me/{username}?startgroup=true"
+                        url=f"https://t.me/{username}?startgroup=true"
                     ),
                 ),
             ],

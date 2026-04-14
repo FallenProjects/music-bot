@@ -10,8 +10,7 @@
     "website": "https://github.com/AshokShau",
     "repository": "https://github.com/AshokShau/TgMusicBot",
     "logo": "https://te.legra.ph/file/6f99c49bdb4679acad717.jpg",
-    "stack": "heroku-24",
-    "image": "heroku/python",
+    "stack": "container",
     "env": {
         "API_ID": {
             "description": "Your Telegram API ID, get it from https://my.telegram.org",
@@ -95,7 +94,7 @@
         },
         "API_URL": {
             "description": "API URL for the bot",
-            "value": "https://tgmusic.fallenapi.fun",
+            "value": "https://api.fallenapi.fun",
             "required": false
         },
         "API_KEY": {
@@ -144,12 +143,10 @@
             "required": false
         }
     },
-    "buildpacks": [
-        {
-            "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest"
-        },
-        {
-            "url": "heroku/python"
-        }
-    ]
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
 }

@@ -314,7 +314,7 @@ async def exec_eval(c: Client, m: types.Message) -> None:
     <pre language="python">{escape(code)}</pre>
     """
         reply = await m.reply_document(
-            document=types.InputFileLocal(filename),
+            document=types.InputFileLocal(path=filename),
             caption=caption,
             disable_notification=True,
             parse_mode="html",
@@ -349,6 +349,7 @@ async def sys_stats(client: Client, message: types.Message) -> None:
     sys_msg = await message.reply_text(
         f"📊 Gathering <b>{client.me.first_name}</b> system statistics..."
     )
+
     if isinstance(sys_msg, types.Error):
         client.logger.warning(sys_msg.message)
 
@@ -631,7 +632,7 @@ async def logs(c: Client, message: types.Message) -> None:
         message (types.Message): The message object containing the command.
     """
     reply = await message.reply_document(
-        document=types.InputFileLocal("bot.log"),
+        document=types.InputFileLocal(path="bot.log"),
         disable_notification=True,
     )
     if isinstance(reply, types.Error):

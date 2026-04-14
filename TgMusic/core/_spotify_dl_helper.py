@@ -92,12 +92,12 @@ class SpotifyDownload:
         """
         self.track = track
         self.encrypted_file = os.path.join(
-            config.DOWNLOADS_DIR, f"{track.tc}.encrypted.ogg"
+            config.DOWNLOADS_DIR, f"{track.id}.encrypted.ogg"
         )
         self.decrypted_file = os.path.join(
-            config.DOWNLOADS_DIR, f"{track.tc}.decrypted.ogg"
+            config.DOWNLOADS_DIR, f"{track.id}.decrypted.ogg"
         )
-        self.output_file = os.path.join(config.DOWNLOADS_DIR, f"{track.tc}.ogg")
+        self.output_file = os.path.join(config.DOWNLOADS_DIR, f"{track.id}.ogg")
 
     async def decrypt_audio(self) -> None:
         """Decrypts the downloaded audio file using AES in CTR mode.
@@ -190,7 +190,7 @@ class SpotifyDownload:
             LOGGER.info("✅ Found existing file: %s", self.output_file)
             return Path(self.output_file)
 
-        _track_id = self.track.tc
+        _track_id = self.track.id
         if not self.track.cdnurl or not self.track.key:
             LOGGER.warning("Missing CDN URL or key for track: %s", _track_id)
             return types.Error(

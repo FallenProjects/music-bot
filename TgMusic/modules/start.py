@@ -164,7 +164,7 @@ async def callback_query_help(c: Client, message: types.UpdateNewCallbackQuery) 
 
     if data == "help_back":
         await message.answer("🏠 Returning to home...")
-        user = await c.getUser(message.sender_user_id)
+        user = await c.getUser(user_id=message.sender_user_id)
 
         result = await message.edit_message_caption(
             START_TEXT.format(user.first_name, c.me.first_name),

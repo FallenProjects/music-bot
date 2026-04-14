@@ -100,12 +100,12 @@ def _get_button(unique_id: str) -> types.ReplyMarkupInlineKeyboard:
         types.ReplyMarkupInlineKeyboard: The generated inline keyboard.
     """
     return types.ReplyMarkupInlineKeyboard(
-        [
+        rows=[
             [
                 types.InlineKeyboardButton(
                     text="✗ Stop Downloading",
                     type=types.InlineKeyboardButtonTypeCallback(
-                        f"play_c_{unique_id}".encode()
+                        data=f"play_c_{unique_id}".encode()
                     ),
                 )
             ]
@@ -234,10 +234,14 @@ async def update_file(client: Client, update: types.UpdateFile):
     if not file.local.is_downloading_completed:
         progress_text = _build_progress_text(filename, total, downloaded, speed)
         parsed = await client.parseTextEntities(
-            progress_text, types.TextParseModeHTML()
+            text=progress_text, parse_mode=types.TextParseModeHTML()
         )
+
         edit = await client.editMessageText(
-            chat_id, message_id, button_markup, types.InputMessageText(parsed)
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=button_markup,
+            input_message_content=types.InputMessageText(text=parsed)
         )
         if isinstance(edit, types.Error):
             LOGGER.error("Progress update error: %s", edit)
@@ -246,9 +250,12 @@ async def update_file(client: Client, update: types.UpdateFile):
     # Completed download
     duration = now - progress["start_time"]
     complete_text = _build_complete_text(filename, total, duration)
-    parsed = await client.parseTextEntities(complete_text, types.TextParseModeHTML())
+    parsed = await client.parseTextEntities(text=complete_text, parse_mode=types.TextParseModeHTML())
     done = await client.editMessageText(
-        chat_id, message_id, button_markup, types.InputMessageText(parsed)
+        chat_id=chat_id,
+        message_id=message_id,
+        reply_markup=button_markup,
+        input_message_content=types.InputMessageText(text=parsed)
     )
     if isinstance(done, types.Error):
         LOGGER.error("Download complete update error: %s", done)
@@ -293,13 +300,13 @@ async def _handle_play_c_data(
         )
         return
 
-    file_info = await c.getRemoteFile(meta["remote_file_id"])
+    file_info = await c.getRemoteFile(remote_file_id=meta["remote_file_id"])
     if isinstance(file_info, types.Error):
         await message.answer("Failed to get file info", show_alert=True)
         LOGGER.error("Failed to get file info: %s", file_info.message)
         return
 
-    ok = await c.cancelDownloadFile(file_info.id)
+    ok = await c.cancelDownloadFile(file_id=file_info.id)
     if isinstance(ok, types.Error):
         await message.answer(
             f"Failed to cancel download. {ok.message}", show_alert=True

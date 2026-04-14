@@ -3,7 +3,7 @@
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
 from pathlib import Path
-from typing import Union
+from typing import Union, List, Optional
 
 from pydantic import BaseModel
 
@@ -35,56 +35,27 @@ class CachedTrack(BaseModel):
     is_video: bool
     platform: str
 
-
 class TrackInfo(BaseModel):
-    """Represents detailed information about a specific track.
-
-    Attributes:
-        url (str): The original URL of the track.
-        cdnurl (str): The CDN URL for downloading the track.
-        key (str): A key associated with the track.
-        name (str): The name of the track.
-        tc (str): A track code or identifier.
-        cover (str): The URL of the track's cover art.
-        duration (int): The duration of the track in seconds.
-        platform (str): The platform from which the track information was fetched.
-    """
-
+    """Holds detailed information about a specific track."""
+    id: str
     url: str
     cdnurl: str
-    key: str
-    name: str
-    tc: str
-    cover: str
-    duration: int
+    key: Optional[str]
     platform: str
 
 
 class MusicTrack(BaseModel):
-    """Represents a single music track from a platform's search results or playlist.
-
-    Attributes:
-        url (str): The URL of the track.
-        name (str): The name of the track.
-        id (str): The unique identifier for the track on its platform.
-        cover (str): The URL of the track's cover art.
-        duration (int): The duration of the track in seconds.
-        platform (str): The name of the music platform.
-    """
-
-    url: str
-    name: str
+    """Represents a single music track returned from a search query."""
+    title: str
     id: str
-    cover: str
+    url: str
+    thumbnail: str
     duration: int
+    channel: Optional[str]
+    views: Optional[str]
     platform: str
 
 
 class PlatformTracks(BaseModel):
-    """Represents a collection of tracks from a music platform.
-
-    Attributes:
-        tracks (list[MusicTrack]): A list of `MusicTrack` objects.
-    """
-
-    tracks: list[MusicTrack]
+    """Collection of music tracks."""
+    results: List[MusicTrack]

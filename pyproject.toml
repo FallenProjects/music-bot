@@ -32,21 +32,23 @@ classifiers = [
 ]
 dependencies = [
     "aiofiles>=25.1.0",
-    "cachetools>=6.2.1",
-    "kurigram>=2.2.13",
-    "ntgcalls>=2.0.6",
-    "pillow>=12.0.0",
-    "psutil>=7.1.0",
-    "py-tgcalls>=2.2.8",
-    "py-yt-search>=0.3",
+    "cachetools>=7.0.5",
+    "httpx>=0.28.1",
+    "kurigram>=2.2.21",
+    "ntgcalls>=2.1.0",
+    "pillow>=12.2.0",
+    "psutil>=7.2.2",
+    "py-tgcalls>=2.2.11",
+    "py-yt-search==0.7.0b2",
     "pycryptodome>=3.23.0",
-    "pydantic>=2.12.2",
-    "pymongo>=4.15.3",
-    "pytdbot>=0.9.8.dev0",
-    "pytgcrypto>=1.2.11",
-    "tdjson==1.8.55",
-    "ujson>=5.11.0",
-    "yt-dlp>=2025.10.14",
+    "pydantic>=2.13.0",
+    "pymongo>=4.16.0",
+    "pytdbot>=0.9.10",
+    "pytgcrypto>=1.2.12",
+    "python-dotenv>=1.2.2",
+    "tdjson==1.8.63",
+    "ujson>=5.12.0",
+    "yt-dlp>=2026.4.10.235301.dev0",
 ]
 
 [project.license]
@@ -55,6 +57,7 @@ file = "LICENSE"
 [project.optional-dependencies]
 dev = [
     "black",
+    "ruff"
 ]
 
 [project.scripts]
@@ -67,6 +70,9 @@ Source = "https://github.com/AshokShau/tgmusicbot"
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+pytdbot = { git = "https://github.com/pytdbot/client", rev = "main" }
 
 [tool.setuptools]
 packages = [

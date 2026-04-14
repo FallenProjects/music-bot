@@ -31,7 +31,7 @@ async def callback_query_vc_play(
 
     if data == "vcplay_close":
         delete_result = await c.deleteMessages(
-            chat_id, [message.message_id], revoke=True
+            chat_id=chat_id, message_ids=[message.message_id], revoke=True
         )
         if isinstance(delete_result, types.Error):
             await message.answer(
@@ -42,13 +42,12 @@ async def callback_query_vc_play(
         return None
 
     user_id = message.sender_user_id
-    user = await c.getUser(user_id)
+    user = await c.getUser(user_id=user_id)
     if isinstance(user, types.Error):
         c.logger.warning(f"Failed to get user info: {user.message}")
         return None
 
     user_name = user.first_name
-    # Handle music playback requests
     try:
         _, platform, song_id = data.split("_", 2)
     except ValueError:
@@ -95,16 +94,21 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
         c (Client): The pytdbot client instance.
         message (types.UpdateNewCallbackQuery): The callback query update.
     """
-    data = message.payload.data.decode()
-    user_id = message.sender_user_id
+    payload = message.payload
+    if not isinstance(payload, types.CallbackQueryPayloadData):
+        return None
 
-    # Retrieve message and user info with error handling
+    data = payload.data.decode()
+    user_id = message.sender_user_id
     get_msg = await message.getMessage()
+    if not get_msg:
+        return None
+
     if isinstance(get_msg, types.Error):
         c.logger.warning(f"Failed to get message: {get_msg.message}")
         return None
 
-    user = await c.getUser(user_id)
+    user = await c.getUser(user_id=user_id)
     if isinstance(user, types.Error):
         c.logger.warning(f"Failed to get user info: {user.message}")
         return None
@@ -136,7 +140,7 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
 
         if delete:
             _del_result = await c.deleteMessages(
-                message.chat_id, [message.message_id], revoke=True
+                chat_id=message.chat_id, message_ids=[message.message_id], revoke=True
             )
             if isinstance(_del_result, types.Error):
                 c.logger.warning(f"Message deletion failed: {_del_result.message}")

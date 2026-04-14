@@ -13,6 +13,7 @@ from ntgcalls import ConnectionNotFound
 from pyrogram import Client as PyroClient
 from pyrogram import errors
 from pytdbot import Client, types
+from pytdbot.types import Error
 from pytgcalls import PyTgCalls, exceptions
 from pytgcalls.types import (
     AudioQuality,
@@ -24,8 +25,9 @@ from pytgcalls.types import (
     UpdatedGroupCallParticipant,
     VideoQuality,
     stream,
-    StreamEnded,
+    StreamEnded, GroupCallParticipant,
 )
+from pytgcalls.types.list import List
 
 from TgMusic.logger import LOGGER
 from TgMusic.modules.utils import (
@@ -45,7 +47,7 @@ from ._dataclass import CachedTrack
 from ._downloader import DownloaderWrapper
 from .buttons import control_buttons
 from .thumbnails import gen_thumb
-from .utils import send_logger
+from ._send_logger import send_logger
 
 
 class Calls:
@@ -314,7 +316,7 @@ class Calls:
             if await db.get_logger_status(self.bot.me.id):
                 self.bot.loop.create_task(
                     send_logger(
-                        self.bot, chat_id, chat_cache.get_playing_track(chat_id)
+                        client=self.bot, chat_id=chat_id, song=chat_cache.get_playing_track(chat_id)
                     )
                 )
 
@@ -428,7 +430,7 @@ class Calls:
                 await gen_thumb(song) if await db.get_thumbnail_status(chat_id) else ""
             )
             # Parse text entities
-            parse = await self.bot.parseTextEntities(text, types.TextParseModeHTML())
+            parse = await self.bot.parseTextEntities(text=text, parse_mode=types.TextParseModeHTML())
             if isinstance(parse, types.Error):
                 LOGGER.error("Failed to parse text entities: %s", parse)
                 parse = text  # Fallback to an original text
@@ -436,7 +438,7 @@ class Calls:
             # Update a message with media or text
             if thumbnail:
                 input_content = types.InputMessagePhoto(
-                    photo=types.InputFileLocal(thumbnail), caption=parse
+                    photo=types.InputFileLocal(path=thumbnail), caption=parse
                 )
                 await self.bot.editMessageMedia(
                     chat_id=chat_id,
@@ -763,7 +765,7 @@ class Calls:
                 code=500, message=f"Failed to get playback time: {str(e)}"
             )
 
-    async def vc_users(self, chat_id: int) -> Union[list, types.Error]:
+    async def vc_users(self, chat_id: int) -> Error | List[GroupCallParticipant] | None:
         """Gets a list of participants in the voice chat.
 
         Args:
@@ -842,7 +844,7 @@ class Calls:
         user_status = user_status_cache.get(cache_key)
         if not user_status:
             user = await self.bot.getChatMember(
-                chat_id=chat_id, member_id=types.MessageSenderUser(user_id)
+                chat_id=chat_id, member_id=types.MessageSenderUser(user_id=user_id)
             )
             if isinstance(user, types.Error):
                 return types.ChatMemberStatusLeft() if user.code == 400 else user
@@ -885,7 +887,7 @@ class Calls:
                 user_id = ub.me.id
                 await self.bot.setChatMemberStatus(
                     chat_id=chat_id,
-                    member_id=types.MessageSenderUser(user_id),
+                    member_id=types.MessageSenderUser(user_id=user_id),
                     status=types.ChatMemberStatusMember(),
                 )
 
@@ -912,7 +914,7 @@ class Calls:
 
         invite_link = chat_invite_cache.get(chat_id)
         if not invite_link:
-            get_link = await self.bot.createChatInviteLink(chat_id, name="TgMusicBot")
+            get_link = await self.bot.createChatInviteLink(chat_id=chat_id, name="TgMusicBot")
             if isinstance(get_link, types.Error):
                 return get_link
             invite_link = get_link.invite_link

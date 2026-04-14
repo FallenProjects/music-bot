@@ -45,7 +45,7 @@ async def handle_non_supergroup(client: Client, chat_id: int) -> None:
         disable_web_page_preview=True,
     )
     await asyncio.sleep(1)
-    await client.leaveChat(chat_id)
+    await client.leaveChat(chat_id=chat_id)
 
 
 def is_valid_supergroup(chat_id: int) -> bool:
@@ -74,7 +74,7 @@ async def handle_bot_join(client: Client, chat_id: int) -> None:
         chat_id (int): The ID of the chat the bot joined.
     """
     _chat_id = int(str(chat_id)[4:]) if str(chat_id).startswith("-100") else chat_id
-    chat_info = await client.getSupergroupFullInfo(_chat_id)
+    chat_info = await client.getSupergroupFullInfo(supergroup_id=_chat_id)
 
     if isinstance(chat_info, types.Error):
         client.logger.warning(
@@ -92,7 +92,7 @@ async def handle_bot_join(client: Client, chat_id: int) -> None:
         )
         await client.sendTextMessage(chat_id, text, reply_markup=SupportButton)
         await asyncio.sleep(1)
-        await client.leaveChat(chat_id)
+        await client.leaveChat(chat_id=chat_id)
         await db.remove_chat(chat_id)
         client.logger.info(
             "Bot left chat %s due to insufficient members (only %d present).",

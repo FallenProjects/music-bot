@@ -94,15 +94,15 @@ def build_song_selection_message(
     buttons = [
         [
             types.InlineKeyboardButton(
-                text=f"{track.name[:18]}",
+                text=f"{track.title[:18]}",
                 type=types.InlineKeyboardButtonTypeCallback(
-                    f"vcplay_{track.platform.lower()}_{track.id}".encode()
+                    data=f"vcplay_{track.platform.lower()}_{track.id}".encode()
                 ),
             )
         ]
         for track in tracks[:4]  # Show first 4 results
     ]
-    return greeting, types.ReplyMarkupInlineKeyboard(buttons)
+    return greeting, types.ReplyMarkupInlineKeyboard(rows=buttons)
 
 
 async def _update_msg_with_thumb(
@@ -130,12 +130,12 @@ async def _update_msg_with_thumb(
             msg, text=text, reply_markup=button, disable_web_page_preview=True
         )
 
-    parsed_text = await c.parseTextEntities(text, types.TextParseModeHTML())
+    parsed_text = await c.parseTextEntities(text=text, parse_mode=types.TextParseModeHTML())
     if isinstance(parsed_text, types.Error):
         return await edit_text(msg, text=parsed_text.message, reply_markup=button)
 
     input_content = types.InputMessagePhoto(
-        types.InputFileLocal(thumb), caption=parsed_text
+        photo=types.InputFileLocal(path=thumb), caption=parsed_text
     )
     return await c.editMessageMedia(
         chat_id=msg.chat_id,
@@ -172,12 +172,12 @@ async def _handle_single_track(
     """
     chat_id = msg.chat_id
     song = CachedTrack(
-        name=track.name,
+        name=track.title,
         track_id=track.id,
         loop=0,
         duration=track.duration,
         file_path=file_path or "",
-        thumbnail=track.cover,
+        thumbnail=track.thumbnail,
         user=user_by,
         platform=track.platform,
         is_video=is_video,
@@ -276,11 +276,11 @@ async def _handle_multiple_tracks(
         chat_cache.add_song(
             chat_id,
             CachedTrack(
-                name=track.name,
+                name=track.title,
                 track_id=track.id,
                 loop=1 if not is_active and index == 0 else 0,
                 duration=track.duration,
-                thumbnail=track.cover,
+                thumbnail=track.thumbnail,
                 user=user_by,
                 file_path="",
                 platform=track.platform,
@@ -289,7 +289,7 @@ async def _handle_multiple_tracks(
             ),
         )
         queue_items.append(
-            f"<b>{position}.</b> {track.name}\n└ Duration: {sec_to_min(track.duration)}"
+            f"<b>{position}.</b> {track.title}\n└ Duration: {sec_to_min(track.duration)}"
         )
 
     queue_summary = (
@@ -333,16 +333,16 @@ async def play_music(
             Defaults to None.
         is_video (bool, optional): Flag for video playback. Defaults to False.
     """
-    if not url_data or not url_data.tracks:
+    if not url_data or not url_data.results:
         return await edit_text(msg, "❌ No tracks found in the provided source.")
 
     await edit_text(msg, text="⬇️ Downloading track...")
 
-    if len(url_data.tracks) == 1:
+    if len(url_data.results) == 1:
         return await _handle_single_track(
-            c, msg, url_data.tracks[0], user_by, tg_file_path, is_video
+            c, msg, url_data.results[0], user_by, tg_file_path, is_video
         )
-    return await _handle_multiple_tracks(msg, url_data.tracks, user_by)
+    return await _handle_multiple_tracks(msg, url_data.results, user_by)
 
 
 async def _handle_telegram_file(
@@ -385,13 +385,15 @@ async def _handle_telegram_file(
 
     duration = await get_audio_duration(file_path.path)
     track_data = PlatformTracks(
-        tracks=[
+       results=[
             MusicTrack(
-                name=file_name,
+                title=file_name,
                 id=reply.remote_unique_file_id,
-                cover="",
+                thumbnail="",
                 duration=duration,
                 url="",
+                channel=file_name,
+                views="",
                 platform="telegram",
             )
         ]
@@ -430,7 +432,7 @@ async def _handle_text_search(
             reply_markup=SupportButton,
         )
 
-    if not search_result or not search_result.tracks:
+    if not search_result or not search_result.results:
         return await edit_text(
             msg,
             text="🔍 No results found. Try different keywords.",
@@ -439,7 +441,7 @@ async def _handle_text_search(
 
     # Direct play if configured
     if play_type == 0:
-        track_url = search_result.tracks[0].url
+        track_url = search_result.results[0].url
         track_info = await DownloaderWrapper(track_url).get_info()
         if isinstance(track_info, types.Error):
             return await edit_text(
@@ -451,7 +453,7 @@ async def _handle_text_search(
 
     # Show selection menu
     selection_text, selection_keyboard = build_song_selection_message(
-        user_by, search_result.tracks
+        user_by, search_result.results
     )
     await edit_text(
         msg,
@@ -494,14 +496,14 @@ async def handle_play_command(c: Client, msg: types.Message, is_video: bool = Fa
         r"https:\/\/t\.me\/([a-zA-Z0-9_]{5,})\/(\d+)", url
     )
     if not reply and tg_pubic_url:
-        info = await c.getMessageLinkInfo(url)
+        info = await c.getMessageLinkInfo(url=url)
         if isinstance(info, types.Error) or not info.message:
             await msg.reply_text(
                 f"⚠️ Could not resolve message from link. {info.message}"
             )
             c.logger.warning(f"❌ Could not resolve message from link: {url}; {info}")
             return None
-        reply = await c.getMessage(info.chat_id, info.message.id)
+        reply = await c.getMessage(chat_id=info.chat_id, message_id=info.message.id)
 
     # Send initial response
     status_msg = await msg.reply_text("🔍 Processing request...")
@@ -567,7 +569,7 @@ async def handle_play_command(c: Client, msg: types.Message, is_video: bool = Fa
             reply_markup=SupportButton,
         )
 
-    if not search_result or not search_result.tracks:
+    if not search_result or not search_result.results:
         return await edit_text(
             status_msg,
             text="🔍 No results found. Try different keywords.",
@@ -575,7 +577,7 @@ async def handle_play_command(c: Client, msg: types.Message, is_video: bool = Fa
         )
 
     # Play first video result
-    video_info = await DownloaderWrapper(search_result.tracks[0].url).get_info()
+    video_info = await DownloaderWrapper(search_result.results[0].url).get_info()
     if isinstance(video_info, types.Error):
         return await edit_text(
             status_msg,

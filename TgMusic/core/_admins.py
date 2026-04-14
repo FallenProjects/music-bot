@@ -78,7 +78,8 @@ async def load_admin_cache(
         return True, admin_cache[chat_id]
 
     admin_list = await c.searchChatMembers(
-        chat_id, filter=types.ChatMembersFilterAdministrators()
+        chat_id=chat_id,
+        filter=types.ChatMembersFilterAdministrators()
     )
     if isinstance(admin_list, types.Error):
         c.logger.warning(
@@ -262,7 +263,7 @@ async def verify_anonymous_admin(
         )
         return
 
-    await c.deleteMessages(message.chat.id, [callback.message_id])
+    await c.deleteMessages(chat_id=message.chat.id, message_ids=[callback.message_id])
     await func(c, message)
 
 
@@ -348,11 +349,11 @@ def admins_only(
             if is_anonymous and not no_reply:
                 ANON[int(f"{chat_id}{msg_id}")] = (message, func, permissions)
                 _type = types.InlineKeyboardButtonTypeCallback(
-                    f"anon.{msg_id}".encode()
+                    data=f"anon.{msg_id}".encode()
                 )
 
                 keyboard = types.ReplyMarkupInlineKeyboard(
-                    [[types.InlineKeyboardButton(text="Verify Admin", type=_type)]]
+                    rows=[[types.InlineKeyboardButton(text="Verify Admin", type=_type)]]
                 )
 
                 return await message.reply_text(

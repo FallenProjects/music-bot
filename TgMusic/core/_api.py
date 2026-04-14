@@ -112,7 +112,7 @@ class ApiData(MusicService):
             Optional[dict]: The JSON response from the API as a dictionary,
                 or None if the request fails.
         """
-        request_url = f"{self.api_url}/{endpoint.lstrip('/')}"
+        request_url = f"{self.api_url}/api/{endpoint.lstrip('/')}"
         return await self.client.make_request(request_url, params=params)
 
     async def get_info(self) -> Union[PlatformTracks, types.Error]:
@@ -127,11 +127,11 @@ class ApiData(MusicService):
                 API request fails.
         """
         if not self.query or not self.is_valid():
-            return types.Error(400, "Invalid or unsupported URL provided")
+            return types.Error(code=400, message="Invalid or unsupported URL provided")
 
         response = await self._make_api_request("get_url", {"url": self.query})
         return self._parse_tracks_response(response) or types.Error(
-            404, "No track information found"
+            code=404, message="No track information found"
         )
 
     async def search(self) -> Union[PlatformTracks, types.Error]:
@@ -146,7 +146,7 @@ class ApiData(MusicService):
                 search fails.
         """
         if not self.query:
-            return types.Error(400, "No search query provided")
+            return types.Error(code=400, message="No search query provided")
 
         # If query is a valid URL, get info directly
         if self.is_valid():
@@ -154,7 +154,7 @@ class ApiData(MusicService):
 
         response = await self._make_api_request("search", {"query": self.query})
         return self._parse_tracks_response(response) or types.Error(
-            404, "No results found for search query"
+            code=404, message="No results found for search query"
         )
 
     async def get_track(self) -> Union[TrackInfo, types.Error]:
@@ -165,11 +165,11 @@ class ApiData(MusicService):
                 metadata, or an Error object if the track cannot be found.
         """
         if not self.query:
-            return types.Error(400, "No track identifier provided")
+            return types.Error(code=400, message="No track identifier provided")
 
         response = await self._make_api_request("track", {"url": self.query})
         return (
-            TrackInfo(**response) if response else types.Error(404, "Track not found")
+            TrackInfo(**response) if response else types.Error(code=404, message="Track not found")
         )
 
     async def download_track(
@@ -192,10 +192,10 @@ class ApiData(MusicService):
                 Error object if the download fails.
         """
         if not track:
-            return types.Error(400, "Invalid track information provided")
+            return types.Error(code=400, message="Invalid track information provided")
 
         # Handle platform-specific download methods
-        if track.platform.lower() == "spotify":
+        if track.key != "" and track.platform.lower() == "spotify":
             spotify_result = await SpotifyDownload(track).process()
             if isinstance(spotify_result, types.Error):
                 LOGGER.error(f"Spotify download failed: {spotify_result.message}")
@@ -205,20 +205,20 @@ class ApiData(MusicService):
         #     return await YouTubeData().download_track(track, video)
 
         if not track.cdnurl:
-            error_msg = f"No download URL available for track: {track.tc}"
+            error_msg = f"No download URL available for track: {track.id}"
             LOGGER.error(error_msg)
-            return types.Error(400, error_msg)
+            return types.Error(code=400, message=error_msg)
 
         # Standard download handling
-        download_path = config.DOWNLOADS_DIR / f"{track.tc}.mp3"
+        download_path = config.DOWNLOADS_DIR / f"{track.id}.mp3"
         download_result = await self.client.download_file(track.cdnurl, download_path)
 
         if not download_result.success:
             LOGGER.warning(
-                f"Download failed for track {track.tc}: {download_result.error}"
+                f"Download failed for track {track.id}: {download_result.error}"
             )
             return types.Error(
-                500, f"Download failed: {download_result.error or track.tc}"
+                code=500, message=f"Download failed: {download_result.error or track.id}"
             )
 
         return download_result.file_path
@@ -242,7 +242,7 @@ class ApiData(MusicService):
                 response is invalid or cannot be parsed.
         """
         if not response_data or "results" not in response_data:
-            return types.Error(404, "Invalid API response format")
+            return types.Error(code=404, message="Invalid API response format")
 
         try:
             tracks = [
@@ -251,10 +251,10 @@ class ApiData(MusicService):
                 if isinstance(track_data, dict)
             ]
             return (
-                PlatformTracks(tracks=tracks)
+                PlatformTracks(results=tracks)
                 if tracks
-                else types.Error(404, "No valid tracks found")
+                else types.Error(code=404, message="No valid tracks found")
             )
         except Exception as parse_error:
             LOGGER.error(f"Failed to parse tracks: {parse_error}")
-            return types.Error(500, "Failed to process track data")
+            return types.Error(code=500, message="Failed to process track data")

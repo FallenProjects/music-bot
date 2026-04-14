@@ -140,14 +140,14 @@ class YouTubeUtils:
             PlatformTracks: A `PlatformTracks` object.
         """
         if not data or not data.get("results"):
-            return PlatformTracks(tracks=[])
+            return PlatformTracks(results=[])
 
         valid_tracks = [
             MusicTrack(**track)
             for track in data["results"]
             if track and track.get("id")
         ]
-        return PlatformTracks(tracks=valid_tracks)
+        return PlatformTracks(results=valid_tracks)
 
     @staticmethod
     def format_track(track_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -173,12 +173,13 @@ class YouTubeUtils:
 
         return {
             "id": track_data.get("id", ""),
-            "name": track_data.get("title", "Unknown Title"),
+            "title": track_data.get("title", "Unknown Title"),
             "duration": YouTubeUtils.duration_to_seconds(duration),
-            "cover": cover_url,
-            "year": 0,
+            "thumbnail": cover_url,
             "url": f"https://www.youtube.com/watch?v={track_data.get('id', '')}",
             "platform": "youtube",
+            "views": "",
+            "channel": "",
         }
 
     @staticmethod
@@ -192,12 +193,9 @@ class YouTubeUtils:
             TrackInfo: A `TrackInfo` object.
         """
         return TrackInfo(
-            cdnurl="None",
-            key="None",
-            name=track_data.get("name", "Unknown Title"),
-            tc=track_data.get("id", ""),
-            cover=track_data.get("cover", ""),
-            duration=track_data.get("duration", 0),
+            id=track_data.get("id", ""),
+            cdnurl="",
+            key="",
             platform="youtube",
             url=f"https://youtube.com/watch?v={track_data.get('id', '')}",
         )
@@ -274,12 +272,12 @@ class YouTubeUtils:
                 "results": [
                     {
                         "id": video_id,
-                        "name": data.get("title"),
+                        "title": data.get("title"),
                         "duration": 0,
-                        "artist": data.get("author_name", ""),
-                        "cover": data.get("thumbnail_url", ""),
-                        "year": 0,
+                        "channel": data.get("author_name", ""),
+                        "thumbnail": data.get("thumbnail_url", ""),
                         "url": f"https://www.youtube.com/watch?v={video_id}",
+                        "views": "",
                         "platform": "youtube",
                     }
                 ]
@@ -323,12 +321,12 @@ class YouTubeUtils:
 
         from TgMusic import client
 
-        info = await client.getMessageLinkInfo(cdnurl)
+        info = await client.getMessageLinkInfo(url=cdnurl)
         if isinstance(info, types.Error) or info.message is None:
             LOGGER.error(f"❌ Could not resolve message from link: {cdnurl}; {info}")
             return None
 
-        msg = await client.getMessage(info.chat_id, info.message.id)
+        msg = await client.getMessage(chat_id=info.chat_id, message_id=info.message.id)
         if isinstance(msg, types.Error):
             LOGGER.error(f"❌ Failed to fetch message with ID {info.message.id}; {msg}")
             return None
@@ -539,7 +537,7 @@ class YouTubeData(MusicService):
                 MusicTrack(**YouTubeUtils.format_track(video))
                 for video in results["result"]
             ]
-            return PlatformTracks(tracks=tracks)
+            return PlatformTracks(results=tracks)
 
         except Exception as error:
             LOGGER.error(f"YouTube search failed for '{self.query}': {error}")
@@ -589,11 +587,11 @@ class YouTubeData(MusicService):
 
         # Try API download first if configured
         if config.API_URL and config.API_KEY:
-            if api_result := await YouTubeUtils.download_with_api(track.tc, video):
+            if api_result := await YouTubeUtils.download_with_api(track.id, video):
                 return api_result
 
         # Fall back to yt-dlp if API fails or not configured
-        dl_path = await YouTubeUtils.download_with_yt_dlp(track.tc, video)
+        dl_path = await YouTubeUtils.download_with_yt_dlp(track.id, video)
         if not dl_path:
             return types.Error(
                 code=500, message="Failed to download track from YouTube"

@@ -112,7 +112,7 @@ async def shellrunner(message: types.Message) -> types.Ok | types.Error | types.
         with open(filename, "w", encoding="utf-8") as file:
             file.write(output)
         reply = await message.reply_document(
-            document=types.InputFileLocal(filename),
+            document=types.InputFileLocal(path=filename),
             caption="📁 Output too large, sending as file:",
             disable_notification=True,
             parse_mode="html",

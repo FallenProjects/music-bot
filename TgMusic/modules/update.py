@@ -99,7 +99,7 @@ async def update(c: Client, message: types.Message) -> None:
                     f.write(output)
 
                 await msg.reply_document(
-                    document=types.InputFileLocal(filename),
+                    document=types.InputFileLocal(path=filename),
                     caption="<b>Update log:</b>",
                     parse_mode="html",
                     disable_notification=True,

@@ -169,6 +169,9 @@ async def ping_cmd(client: Client, message: types.Message) -> None:
     uptime_str = str(uptime).split(".")[0]
     start_time = time.monotonic()
     reply_msg = await message.reply_text("🏓 Pinging...")
+    if isinstance(reply_msg, types.Error):
+        return None
+
     latency = (time.monotonic() - start_time) * 1000  # ms
     response = (
         "📊 <b>System Performance Metrics</b>\n\n"

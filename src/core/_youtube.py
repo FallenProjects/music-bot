@@ -303,7 +303,7 @@ class YouTubeUtils:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         httpx = HttpxClient()
         get_track = await httpx.make_request(
-            f"{config.API_URL}/track?url={video_url}&video={is_video}"
+            f"{config.API_URL}/api/track?url={video_url}&video={is_video}"
         )
         if not get_track:
             LOGGER.error("Response from API is empty")

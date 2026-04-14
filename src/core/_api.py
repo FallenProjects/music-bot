@@ -195,7 +195,7 @@ class ApiData(MusicService):
             return types.Error(code=400, message="Invalid track information provided")
 
         # Handle platform-specific download methods
-        if track.key != "" and track.platform.lower() == "spotify":
+        if track.platform.lower() == "spotify" and track.key:
             spotify_result = await SpotifyDownload(track).process()
             if isinstance(spotify_result, types.Error):
                 LOGGER.error(f"Spotify download failed: {spotify_result.message}")

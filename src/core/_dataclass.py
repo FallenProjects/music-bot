@@ -40,7 +40,7 @@ class TrackInfo(BaseModel):
     id: str
     url: str
     cdnurl: str
-    key: Optional[str]
+    key: Optional[str] = None
     platform: str
 
 

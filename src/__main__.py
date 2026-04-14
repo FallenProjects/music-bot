@@ -8,14 +8,25 @@ import signal
 from src import client
 
 
+_shutdown_started = False
+
+
 def handle_shutdown():
     """Initiates the graceful shutdown process.
 
     This function is designed to be used as a signal handler. It schedules
     the main `shutdown` coroutine to be run on the event loop.
     """
+    global _shutdown_started
+
+    if _shutdown_started:
+        return
+
+    _shutdown_started = True
     client.logger.info("Shutting down...")
-    asyncio.ensure_future(shutdown())
+
+    if client.loop and not client.loop.is_closed():
+        client.loop.create_task(shutdown())
 
 
 async def shutdown():
@@ -26,11 +37,14 @@ async def shutdown():
     """
     if client.is_running:
         await client.stop_task()
+
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    client.loop.stop()
+
+    if client.loop and client.loop.is_running():
+        client.loop.stop()
 
 
 def main() -> None:
@@ -42,7 +56,10 @@ def main() -> None:
     """
     client.logger.info("Starting TgMusicBot...")
 
-    # Set up signal handlers
+    if client.loop is None or client.loop.is_closed():
+        client.loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(client.loop)
+
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             client.loop.add_signal_handler(sig, handle_shutdown)
@@ -53,7 +70,7 @@ def main() -> None:
 
     try:
         client.loop.run_until_complete(client.initialize_components())
-        client.run()
+        client.loop.run_until_complete(client.run())
     except Exception as e:
         client.logger.critical(f"Fatal error: {e}", exc_info=True)
     finally:

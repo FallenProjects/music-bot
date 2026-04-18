@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Union
 from urllib.parse import unquote
 
 import aiofiles
-import httpx
+import aiohttp
 from aiofiles import os
 
 from src.logger import LOGGER
@@ -40,7 +40,7 @@ class DownloadResult:
 class HttpxClient:
     """An asynchronous HTTP client for making requests and downloading files.
 
-    This class is a wrapper around `httpx.AsyncClient` that provides
+    This class is a wrapper around `aiohttp.ClientSession` that provides
     higher-level functionality, such as automatic retries with exponential
     backoff, specialized download handling, and API key management for
     specific requests.
@@ -78,21 +78,25 @@ class HttpxClient:
         self._timeout = timeout
         self._download_timeout = download_timeout
         self._max_redirects = max_redirects
-        self._session = httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=self._timeout,
-                read=self._timeout,
-                write=self._timeout,
-                pool=self._timeout,
-            ),
-            follow_redirects=max_redirects > 0,
-            max_redirects=max_redirects,
+
+        self._request_timeout = aiohttp.ClientTimeout(
+            total=self._timeout,
+            connect=self._timeout,
+        )
+        self._download_timeout_obj = aiohttp.ClientTimeout(
+            total=self._download_timeout,
+            connect=self._timeout,
+        )
+
+        self._session = aiohttp.ClientSession(
+            timeout=self._request_timeout,
+            connector=aiohttp.TCPConnector(),
         )
 
     async def close(self) -> None:
-        """Closes the underlying httpx session gracefully."""
+        """Closes the underlying aiohttp session gracefully."""
         try:
-            await self._session.aclose()
+            await self._session.close()
         except Exception as e:
             LOGGER.error("Error closing HTTP session: %s", repr(e), exc_info=True)
 
@@ -116,28 +120,33 @@ class HttpxClient:
         return headers
 
     @staticmethod
-    async def _parse_error_response(response: httpx.Response) -> str:
+    async def _parse_error_response(response: aiohttp.ClientResponse) -> str:
         """Parses an error message from an HTTP response.
 
         It attempts to extract a JSON error message, falling back to the
         raw response text if JSON parsing fails.
 
         Args:
-            response (httpx.Response): The failed HTTP response.
+            response (aiohttp.ClientResponse): The failed HTTP response.
 
         Returns:
             str: The parsed error message.
         """
         try:
-            error_data = response.json()
+            error_data = await response.json(content_type=None)
             if isinstance(error_data, dict):
                 if "error" in error_data:
                     return str(error_data["error"])
                 if "message" in error_data:
                     return str(error_data["message"])
-        except ValueError:
+        except (ValueError, aiohttp.ContentTypeError):
             pass
-        return response.text or "No error details provided"
+
+        try:
+            text = await response.text()
+            return text or "No error details provided"
+        except Exception:
+            return "No error details provided"
 
     async def download_file(
         self,
@@ -169,21 +178,27 @@ class HttpxClient:
             return DownloadResult(success=False, error=error_msg)
 
         headers = self._set_headers(url, kwargs.pop("headers", {}))
+        allow_redirects = self._max_redirects > 0
 
         try:
-            async with self._session.stream(
-                "GET", url, timeout=self._download_timeout, headers=headers
+            async with self._session.get(
+                url,
+                headers=headers,
+                timeout=self._download_timeout_obj,
+                allow_redirects=allow_redirects,
+                max_redirects=self._max_redirects if allow_redirects else 0,
+                **kwargs,
             ) as response:
-                if not response.is_success:
+                if response.status >= 400:
                     error_msg = await self._parse_error_response(response)
                     LOGGER.error(
                         "Download failed for %s with status %d: %s",
                         url,
-                        response.status_code,
+                        response.status,
                         error_msg,
                     )
                     return DownloadResult(
-                        success=False, error=error_msg, status_code=response.status_code
+                        success=False, error=error_msg, status_code=response.status
                     )
 
                 if file_path is None:
@@ -208,7 +223,7 @@ class HttpxClient:
 
                 try:
                     async with aiofiles.open(temp_path, "wb") as f:
-                        async for chunk in response.aiter_bytes(self.CHUNK_SIZE):
+                        async for chunk in response.content.iter_chunked(self.CHUNK_SIZE):
                             await f.write(chunk)
                 except Exception as e:
                     if temp_path.exists():
@@ -224,20 +239,20 @@ class HttpxClient:
                 )
                 return DownloadResult(success=True, file_path=path)
 
-        except httpx.HTTPStatusError as e:
-            error_msg = await self._parse_error_response(e.response)
+        except aiohttp.ClientResponseError as e:
+            error_msg = str(e.message)
             LOGGER.error(
                 "HTTP error %d for %s: %s",
-                e.response.status_code,
+                e.status,
                 url,
                 error_msg,
                 exc_info=True,
             )
             return DownloadResult(
-                success=False, error=error_msg, status_code=e.response.status_code
+                success=False, error=error_msg, status_code=e.status
             )
 
-        except httpx.RequestError as e:
+        except aiohttp.ClientError as e:
             error_msg = f"Request failed for {url}: {str(e)}"
             LOGGER.error(error_msg, exc_info=True)
             return DownloadResult(success=False, error=error_msg)
@@ -288,38 +303,45 @@ class HttpxClient:
             return None
 
         headers = self._set_headers(url, kwargs.pop("headers", {}))
+        allow_redirects = self._max_redirects > 0
         last_error = None
 
         for attempt in range(max_retries):
             try:
                 start = time.monotonic()
-                response = await self._session.get(url, headers=headers, **kwargs)
-                duration = time.monotonic() - start
-
-                if not response.is_success:
-                    error_msg = await self._parse_error_response(response)
-                    LOGGER.warning(
-                        "Request to %s failed with status %d (attempt %d/%d): %s",
-                        url,
-                        response.status_code,
-                        attempt + 1,
-                        max_retries,
-                        error_msg,
-                    )
-                    last_error = error_msg
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(backoff_factor * (2**attempt))
-                    continue
-
-                LOGGER.debug(
-                    "Request to %s succeeded in %.2fs (status %d)",
+                async with self._session.get(
                     url,
-                    duration,
-                    response.status_code,
-                )
-                return response.json()
+                    headers=headers,
+                    allow_redirects=allow_redirects,
+                    max_redirects=self._max_redirects if allow_redirects else 0,
+                    **kwargs,
+                ) as response:
+                    duration = time.monotonic() - start
 
-            except httpx.RequestError as e:
+                    if response.status >= 400:
+                        error_msg = await self._parse_error_response(response)
+                        LOGGER.warning(
+                            "Request to %s failed with status %d (attempt %d/%d): %s",
+                            url,
+                            response.status,
+                            attempt + 1,
+                            max_retries,
+                            error_msg,
+                        )
+                        last_error = error_msg
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(backoff_factor * (2**attempt))
+                        continue
+
+                    LOGGER.debug(
+                        "Request to %s succeeded in %.2fs (status %d)",
+                        url,
+                        duration,
+                        response.status,
+                    )
+                    return await response.json(content_type=None)
+
+            except aiohttp.ClientError as e:
                 last_error = str(e)
                 LOGGER.warning(
                     "Request failed for %s (attempt %d/%d): %s",

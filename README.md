@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **Looking for the latest TgMusicBot?**
+> The project has been rewritten in **Go** and is actively developed here:
+> https://github.com/AshokShau/TgMusicBot
+>
+> This repository contains the **original Python implementation**, initially developed in `AshokShau/TgMusicBot` and later moved here.
+>
+> The Python version is still working and maintained for compatibility, but it will **not receive major updates**. Only **bug fixes and dependency-related changes** will be applied if needed.
+
 # 🎵 TgMusic – Telegram Music Bot [![Stars](https://img.shields.io/github/stars/FallenProjects/music-bot?style=social)](https://github.com/FallenProjects/music-bot/stargazers)
 
 **TgMusic** is a high-performance Telegram music bot designed for seamless music streaming in voice chats. It leverages a powerful combination of libraries, using `pytdbot` for efficient interaction with the Telegram Bot API and a multi-assistant architecture powered by `pyrogram` and `py-tgcalls` for robust, low-latency audio and video playback.

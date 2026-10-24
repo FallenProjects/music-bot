@@ -21,10 +21,12 @@ async def queue_info(_: Client, msg: types.Message) -> None:
         _ (Client): The pytdbot client instance (unused).
         msg (types.Message): The message object containing the command.
     """
-    if msg.chat_id > 0:
+    if msg.chat_id is None or msg.chat_id > 0:
         return
 
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     _queue = chat_cache.get_queue(chat_id)
     if not _queue:
         await msg.reply_text("📭 The queue is currently empty.")
@@ -41,6 +43,8 @@ async def queue_info(_: Client, msg: types.Message) -> None:
         )
         return
 
+    played = await call.played_time(chat_id)
+    progress = "Unavailable" if isinstance(played, types.Error) else sec_to_min(played)
     current_song = _queue[0]
     text = [
         f"<b>🎧 Queue for {chat.title}</b>",
@@ -50,7 +54,7 @@ async def queue_info(_: Client, msg: types.Message) -> None:
         f"├ <b>Requested by:</b> {current_song.user}",
         f"├ <b>Duration:</b> {sec_to_min(current_song.duration)} min",
         f"├ <b>Loop:</b> {'🔁 On' if current_song.loop else '➡️ Off'}",
-        f"└ <b>Progress:</b> {sec_to_min(await call.played_time(chat.id))} min",
+        f"└ <b>Progress:</b> {progress} min",
     ]
 
     if len(_queue) > 1:
@@ -73,7 +77,7 @@ async def queue_info(_: Client, msg: types.Message) -> None:
                 "",
                 "<b>▶️ Now Playing:</b>",
                 f"├ <code>{current_song.name[:45]}</code>",
-                f"└ {sec_to_min(await call.played_time(chat.id))}/{sec_to_min(current_song.duration)} min",
+                f"└ {progress}/{sec_to_min(current_song.duration)} min",
                 "",
                 f"<b>📊 Total:</b> {len(_queue)} track(s) in queue",
             ]

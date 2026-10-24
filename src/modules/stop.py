@@ -20,16 +20,18 @@ async def stop_song(_: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if not chat_cache.is_active(chat_id):
         await msg.reply_text("⏸ No active playback session")
-        return None
+        return
 
     _end = await call.end(chat_id)
     if isinstance(_end, types.Error):
         await msg.reply_text(f"⚠️ <b>Error:</b> {_end.message}")
-        return None
+        return
 
     await msg.reply_text(
-        f"⏹️ Playback stopped by {await msg.mention()}\n" "🔇 The queue has been cleared"
+        f"⏹️ Playback stopped by {await msg.mention()}\n🔇 The queue has been cleared"
     )
-    return None
+    return

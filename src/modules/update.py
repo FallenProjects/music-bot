@@ -15,7 +15,7 @@ from src.core import Filter, admins_only, call, chat_cache
 from src.logger import LOGGER
 
 
-def is_docker():
+def is_docker() -> bool:
     """Checks if the bot is running inside a Docker container.
 
     This is done by checking for the existence of the `/.dockerenv` file or
@@ -28,7 +28,7 @@ def is_docker():
         return True
     if os.path.isfile("/proc/1/cgroup"):
         try:
-            with open("/proc/1/cgroup", "r") as f:
+            with open("/proc/1/cgroup") as f:
                 return "docker" in f.read()
         except Exception as e:
             LOGGER.warning("Failed to check if running in Docker: %s", e)
@@ -52,10 +52,14 @@ async def update(c: Client, message: types.Message) -> None:
         c (Client): The pytdbot client instance.
         message (types.Message): The message object containing the command.
     """
-    command = message.text.strip().split()[0].lstrip("/")
+    command = message.text.strip().split()[0].lstrip("/!").split("@", 1)[0].lower()
     msg = await message.reply_text(
         f"{'Updating and ' if command == 'update' else ''}Restarting the bot..."
     )
+
+    if isinstance(msg, types.Error):
+        c.logger.warning("Could not send restart status: %s", msg)
+        return
 
     if command == "update":
         if not os.path.exists(".git"):
@@ -140,4 +144,7 @@ async def update(c: Client, message: types.Message) -> None:
         if not tgmusic_path:
             await msg.edit_text("❌ Unable to find 'start' in PATH.")
             return
-        execvp("start", ["start"])
+        from src import client
+
+        await client.stop_task()
+        execvp(tgmusic_path, [tgmusic_path])

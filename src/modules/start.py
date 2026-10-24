@@ -100,6 +100,8 @@ async def start_cmd(c: Client, message: types.Message) -> None:
         message (types.Message): The message object containing the command.
     """
     chat_id = message.chat_id
+    if chat_id is None:
+        return
     bot_name = c.me.first_name
     mention = await message.mention()
 
@@ -122,7 +124,9 @@ async def start_cmd(c: Client, message: types.Message) -> None:
         reply = await message.reply_photo(
             photo=config.START_IMG,
             caption=START_TEXT.format(mention, bot_name),
-            reply_markup=add_me_markup(c.me.usernames.editable_username),
+            reply_markup=add_me_markup(
+                (c.me.usernames.editable_username or "") if c.me.usernames else ""
+            ),
         )
 
     if isinstance(reply, types.Error):
@@ -141,10 +145,16 @@ async def callback_query_help(c: Client, message: types.UpdateNewCallbackQuery) 
         c (Client): The pytdbot client instance.
         message (types.UpdateNewCallbackQuery): The callback query update.
     """
-    data = message.payload.data.decode()
+    payload = message.payload
+    if not isinstance(payload, types.CallbackQueryPayloadData) or not payload.data:
+        return
+    data = payload.data.decode(errors="ignore")
 
     if data == "help_all":
         user = await c.getUser(user_id=message.sender_user_id)
+        if isinstance(user, types.Error):
+            await message.answer("Could not load user information", show_alert=True)
+            return
         await message.answer("📚 Opening Help Menu...")
         text = (
             f"👋 <b>Hello {user.first_name}!</b>\n\n"
@@ -160,19 +170,24 @@ async def callback_query_help(c: Client, message: types.UpdateNewCallbackQuery) 
         result = await message.edit_message_caption(text, reply_markup=HelpMenu)
         if isinstance(result, types.Error):
             c.logger.error(f"Edit failed: {result.message}")
-        return None
+        return
 
     if data == "help_back":
         await message.answer("🏠 Returning to home...")
         user = await c.getUser(user_id=message.sender_user_id)
+        if isinstance(user, types.Error):
+            await message.answer("Could not load user information", show_alert=True)
+            return
 
         result = await message.edit_message_caption(
             START_TEXT.format(user.first_name, c.me.first_name),
-            reply_markup=add_me_markup(c.me.usernames.editable_username),
+            reply_markup=add_me_markup(
+                (c.me.usernames.editable_username or "") if c.me.usernames else ""
+            ),
         )
         if isinstance(result, types.Error):
             c.logger.error(f"Edit failed: {result.message}")
-        return None
+        return
 
     if category := HELP_CATEGORIES.get(data):
         await message.answer(f"📖 {category['title']}")
@@ -183,7 +198,7 @@ async def callback_query_help(c: Client, message: types.UpdateNewCallbackQuery) 
         )
         if isinstance(result, types.Error):
             c.logger.error(f"Edit failed: {result.message}")
-        return None
+        return
 
     await message.answer("⚠️ Unknown command category.")
-    return None
+    return

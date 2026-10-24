@@ -12,7 +12,7 @@ from .progress_handler import _handle_play_c_data
 from .utils.play_helpers import edit_text
 
 
-@Client.on_updateNewCallbackQuery(filters=Filter.regex(r"vcplay_\w+"))
+@Client.on_updateNewCallbackQuery(filters=Filter.regex(r"^vcplay_\w+"))
 async def callback_query_vc_play(
     c: Client, message: types.UpdateNewCallbackQuery
 ) -> None:
@@ -26,12 +26,19 @@ async def callback_query_vc_play(
         c (Client): The pytdbot client instance.
         message (types.UpdateNewCallbackQuery): The callback query update.
     """
-    data = message.payload.data.decode()
+    payload = message.payload
+    if not isinstance(payload, types.CallbackQueryPayloadData) or not payload.data:
+        return
+    if message.message_id is None or message.sender_user_id is None:
+        return
+    data = payload.data.decode(errors="ignore")
     chat_id = message.chat_id
+    if chat_id is None:
+        return
 
     if data == "vcplay_close":
         delete_result = await c.deleteMessages(
-            chat_id=chat_id, message_ids=[message.message_id], revoke=True
+            chat_id=chat_id, message_ids=[message.message_id or 0], revoke=True
         )
         if isinstance(delete_result, types.Error):
             await message.answer(
@@ -47,7 +54,7 @@ async def callback_query_vc_play(
         c.logger.warning(f"Failed to get user info: {user.message}")
         return None
 
-    user_name = user.first_name
+    user_name = user.first_name or "User"
     try:
         _, platform, song_id = data.split("_", 2)
     except ValueError:
@@ -70,18 +77,17 @@ async def callback_query_vc_play(
         return None
 
     song = await DownloaderWrapper(url).get_info()
-    if song:
-        if isinstance(song, types.Error):
-            await edit_text(reply, text=f"⚠️ Retrieval error\n{song.message}")
-            return None
-
+    if isinstance(song, types.Error):
+        await edit_text(reply, text=f"⚠️ Retrieval error\n{song.message}")
+        return None
+    if song.results:
         return await play_music(c, reply, song, user_name)
 
     await edit_text(reply, text="⚠️ Requested content not found")
     return None
 
 
-@Client.on_updateNewCallbackQuery(filters=Filter.regex(r"play_\w+"))
+@Client.on_updateNewCallbackQuery(filters=Filter.regex(r"^play_\w+"))
 @admins_only(is_bot=True, is_auth=True)
 async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> None:
     """Handles all playback control callback queries.
@@ -95,7 +101,9 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
         message (types.UpdateNewCallbackQuery): The callback query update.
     """
     payload = message.payload
-    if not isinstance(payload, types.CallbackQueryPayloadData):
+    if not isinstance(payload, types.CallbackQueryPayloadData) or not payload.data:
+        return
+    if message.message_id is None or message.sender_user_id is None:
         return None
 
     data = payload.data.decode()
@@ -113,7 +121,7 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
         c.logger.warning(f"Failed to get user info: {user.message}")
         return None
 
-    user_name = user.first_name
+    user_name = user.first_name or "User"
 
     def requires_active_chat(action: str) -> bool:
         """Check if action requires an active playback session."""
@@ -125,7 +133,10 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
         }
 
     async def send_response(
-        msg: str, alert: bool = False, delete: bool = False, reply_markup=None
+        msg: str,
+        alert: bool = False,
+        delete: bool = False,
+        reply_markup: types.ReplyMarkupInlineKeyboard | None = None,
     ) -> None:
         """Helper function to send standardized responses."""
         if alert:
@@ -140,12 +151,16 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
 
         if delete:
             _del_result = await c.deleteMessages(
-                chat_id=message.chat_id, message_ids=[message.message_id], revoke=True
+                chat_id=message.chat_id,
+                message_ids=[message.message_id or 0],
+                revoke=True,
             )
             if isinstance(_del_result, types.Error):
                 c.logger.warning(f"Message deletion failed: {_del_result.message}")
 
     chat_id = message.chat_id
+    if chat_id is None:
+        return
     if requires_active_chat(data) and not chat_cache.is_active(chat_id):
         return await send_response(
             "⏹️ No active playback session in this chat.", alert=True
@@ -153,7 +168,7 @@ async def callback_query(c: Client, message: types.UpdateNewCallbackQuery) -> No
 
     # Handle different control actions
     if data == "play_skip":
-        result = await call.play_next(chat_id)
+        result = await call.play_next(chat_id, force=True)
         if isinstance(result, types.Error):
             return await send_response(
                 f"⚠️ Playback error\nDetails: {result.message}",

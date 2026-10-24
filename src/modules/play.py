@@ -2,6 +2,7 @@
 #  Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
+import asyncio
 import re
 
 from pytdbot import Client, types
@@ -21,6 +22,7 @@ from src.core import (
     db,
     tg,
 )
+from src.core._downloader import MusicService
 from src.core.thumbnails import gen_thumb
 from src.logger import LOGGER
 from src.modules.utils import get_audio_duration, sec_to_min
@@ -110,8 +112,8 @@ async def _update_msg_with_thumb(
     msg: types.Message,
     text: str,
     thumb: str,
-    button: types.ReplyMarkupInlineKeyboard,
-):
+    button: types.ReplyMarkupInlineKeyboard | None,
+) -> types.Message | types.Error | None:
     """Updates a message with a thumbnail and caption, or just text if no thumb.
 
     This helper function is used to send the "Now Playing" or "Added to Queue"
@@ -130,12 +132,15 @@ async def _update_msg_with_thumb(
             msg, text=text, reply_markup=button, disable_web_page_preview=True
         )
 
-    parsed_text = await c.parseTextEntities(text=text, parse_mode=types.TextParseModeHTML())
+    parsed_text = await c.parseTextEntities(
+        text=text, parse_mode=types.TextParseModeHTML()
+    )
     if isinstance(parsed_text, types.Error):
         return await edit_text(msg, text=parsed_text.message, reply_markup=button)
 
     input_content = types.InputMessagePhoto(
-        photo=types.InputFileLocal(path=thumb), caption=parsed_text
+        photo=types.InputPhoto(photo=types.InputFileLocal(path=thumb)),
+        caption=parsed_text,
     )
     return await c.editMessageMedia(
         chat_id=msg.chat_id,
@@ -150,9 +155,9 @@ async def _handle_single_track(
     msg: types.Message,
     track: MusicTrack,
     user_by: str,
-    file_path: str = None,
+    file_path: str | None = None,
     is_video: bool = False,
-):
+) -> types.Message | types.Error | None:
     """Processes a single track for playback or queuing.
 
     This function is the core logic for handling a single song. It downloads
@@ -171,6 +176,8 @@ async def _handle_single_track(
             Defaults to False.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     song = CachedTrack(
         name=track.title,
         track_id=track.id,
@@ -205,7 +212,7 @@ async def _handle_single_track(
         chat_cache.add_song(chat_id, song)
 
         queue_info = (
-            f"<b>🎧 Added to Queue (#{len(queue)})</b>\n\n"
+            f"<b>🎧 Added to Queue (#{len(queue) + 1})</b>\n\n"
             f"▫ <b>Track:</b> <a href='{song.url}'>{song.name}</a>\n"
             f"▫ <b>Duration:</b> {sec_to_min(song.duration)}\n"
             f"▫ <b>Requested by:</b> {song.user}"
@@ -226,6 +233,7 @@ async def _handle_single_track(
 
     play_result = await call.play_media(chat_id, song.file_path, video=is_video)
     if isinstance(play_result, types.Error):
+        chat_cache.clear_chat(chat_id)
         return await edit_text(msg, text=f"⚠️ Playback error: {play_result.message}")
 
     # Prepare now playing message
@@ -252,7 +260,7 @@ async def _handle_single_track(
 
 async def _handle_multiple_tracks(
     msg: types.Message, tracks: list[MusicTrack], user_by: str
-):
+) -> types.Message | types.Error | None:
     """Processes and queues multiple tracks from a playlist or album.
 
     This function iterates through a list of tracks, adds each one to the
@@ -265,14 +273,19 @@ async def _handle_multiple_tracks(
         user_by (str): The name of the user who requested the playlist/album.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     is_active = chat_cache.is_active(chat_id)
     queue = chat_cache.get_queue(chat_id)
 
+    tracks = tracks[: max(0, 10 - len(queue))]
+    if not tracks:
+        return await edit_text(msg, "⚠️ Queue limit reached (10 tracks max).")
     queue_header = "<b>📥 Added to Queue:</b>\n<blockquote expandable>\n"
     queue_items = []
 
     for index, track in enumerate(tracks):
-        position = len(queue) + index
+        position = len(queue) + index + 1
         chat_cache.add_song(
             chat_id,
             CachedTrack(
@@ -303,7 +316,7 @@ async def _handle_multiple_tracks(
 
     # Handle message length limit
     if len(full_message) > 4096:
-        full_message = queue_summary
+        full_message = queue_summary.removeprefix("</blockquote>\n")
 
     if not is_active:
         await call.play_next(chat_id)
@@ -316,9 +329,9 @@ async def play_music(
     msg: types.Message,
     url_data: PlatformTracks,
     user_by: str,
-    tg_file_path: str = None,
+    tg_file_path: str | None = None,
     is_video: bool = False,
-):
+) -> types.Message | types.Error | None:
     """The main dispatcher for music playback after track data is fetched.
 
     This function determines whether the source contains a single track or
@@ -347,7 +360,7 @@ async def play_music(
 
 async def _handle_telegram_file(
     c: Client, reply: types.Message, reply_message: types.Message, user_by: str
-):
+) -> types.Message | types.Error | None:
     """Handles playback requests that are replies to Telegram audio/video files.
 
     Args:
@@ -358,14 +371,16 @@ async def _handle_telegram_file(
     """
     content = reply.content
     mime_type = None
-    if isinstance(content, types.MessageDocument):
+    if isinstance(content, types.MessageDocument) and content.document:
         mime_type = content.document.mime_type
-    elif isinstance(content, types.MessageVideo):
+    elif isinstance(content, types.MessageVideo) and content.video:
         mime_type = content.video.mime_type
     elif isinstance(content, types.Document):
         mime_type = content.mime_type
 
-    is_video = isinstance(content, (types.MessageVideo, types.Video)) or (
+    is_video = isinstance(
+        content, (types.MessageVideo, types.MessageVideoNote)
+    ) or bool(
         isinstance(content, (types.MessageDocument, types.Document))
         and mime_type
         and mime_type.startswith("video/")
@@ -383,9 +398,11 @@ async def _handle_telegram_file(
             ),
         )
 
+    if not file_path.path:
+        return await edit_text(reply_message, "Downloaded file has no local path")
     duration = await get_audio_duration(file_path.path)
     track_data = PlatformTracks(
-       results=[
+        results=[
             MusicTrack(
                 title=file_name,
                 id=reply.remote_unique_file_id,
@@ -406,9 +423,9 @@ async def _handle_telegram_file(
 async def _handle_text_search(
     c: Client,
     msg: types.Message,
-    wrapper: DownloaderWrapper,
+    wrapper: MusicService,
     user_by: str,
-):
+) -> types.Message | types.Error | None:
     """Handles music searches initiated by a text query.
 
     It performs a search using the provided wrapper and then either plays
@@ -422,6 +439,8 @@ async def _handle_text_search(
         user_by (str): The name of the user who made the request.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     play_type = await db.get_play_type(chat_id)
 
     search_result = await wrapper.search()
@@ -464,7 +483,9 @@ async def _handle_text_search(
     return None
 
 
-async def handle_play_command(c: Client, msg: types.Message, is_video: bool = False):
+async def handle_play_command(
+    c: Client, msg: types.Message, is_video: bool = False
+) -> types.Message | types.Error | None:
     """The main entry point and dispatcher for the /play and /vplay commands.
 
     This function parses the user's command, determines the input type (URL,
@@ -478,18 +499,24 @@ async def handle_play_command(c: Client, msg: types.Message, is_video: bool = Fa
             Defaults to False.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     # Validate chat type
     if chat_id > 0:
         return await msg.reply_text("❌ This command only works in groups/channels.")
 
     # Check queue limit
     queue = chat_cache.get_queue(chat_id)
-    if len(queue) > 10:
+    if len(queue) >= 10:
         return await msg.reply_text(
             "⚠️ Queue limit reached (10 tracks max). Use /end to clear queue."
         )
 
     reply = await msg.getRepliedMessage() if msg.reply_to_message_id else None
+    if isinstance(reply, types.Error):
+        return await msg.reply_text(
+            f"⚠️ Could not retrieve replied message: {reply.message}"
+        )
     url = await get_url(msg, reply)
 
     tg_pubic_url = url and re.fullmatch(
@@ -511,7 +538,7 @@ async def handle_play_command(c: Client, msg: types.Message, is_video: bool = Fa
         LOGGER.error("Failed to send status message: %s", status_msg)
         return None
 
-    c.loop.create_task(del_msg(msg))  # Clean up command message
+    asyncio.create_task(del_msg(msg))  # Clean up command message
 
     args = extract_argument(msg.text)
     # Initialize appropriate downloader

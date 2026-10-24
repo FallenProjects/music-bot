@@ -37,7 +37,9 @@ async def handle_non_supergroup(client: Client, chat_id: int) -> None:
         "🔗 https://te.legra.ph/How-to-Convert-a-Group-to-a-Supergroup-01-02\n\n"
         "If you have any questions, join our support group:"
     )
-    bot_username = client.me.usernames.editable_username
+    bot_username = (
+        (client.me.usernames.editable_username or "") if client.me.usernames else ""
+    )
     await client.sendTextMessage(
         chat_id=chat_id,
         text=text,
@@ -82,7 +84,10 @@ async def handle_bot_join(client: Client, chat_id: int) -> None:
         )
         return
 
-    if chat_info.member_count < config.MIN_MEMBER_COUNT:
+    if (
+        chat_info.member_count is not None
+        and chat_info.member_count < config.MIN_MEMBER_COUNT
+    ):
         text = (
             f"⚠️ This group has too few members ({chat_info.member_count}).\n\n"
             "To prevent spam and ensure proper functionality, "
@@ -102,7 +107,8 @@ async def handle_bot_join(client: Client, chat_id: int) -> None:
         return
 
     if invite_link := chat_info.invite_link:
-        chat_invite_cache[chat_id] = invite_link
+        if invite_link.invite_link:
+            chat_invite_cache[chat_id] = invite_link.invite_link
 
 
 @Client.on_updateChatMember()
@@ -120,22 +126,34 @@ async def chat_member(client: Client, update: types.UpdateChatMember) -> None:
     chat_id = update.chat_id
 
     # Early return for non-group chats
-    if chat_id > 0 or not await _validate_chat(client, chat_id):
-        return None
+    if chat_id is None or chat_id > 0 or not await _validate_chat(client, chat_id):
+        return
 
     await db.add_chat(chat_id)
-    new_member = update.new_chat_member.member_id
-    user_id = (
-        new_member.user_id
-        if isinstance(new_member, types.MessageSenderUser)
-        else new_member.chat_id
-    )
-    old_status = update.old_chat_member.status["@type"]
-    new_status = update.new_chat_member.status["@type"]
+    old_member = update.old_chat_member
+    new_member = update.new_chat_member
+    if (
+        old_member is None
+        or new_member is None
+        or old_member.status is None
+        or new_member.status is None
+    ):
+        return
+    sender = new_member.member_id
+    if isinstance(sender, types.MessageSenderUser):
+        user_id = sender.user_id
+    elif isinstance(sender, types.MessageSenderChat):
+        user_id = sender.chat_id
+    else:
+        return
+    if user_id is None:
+        return
+    old_status = old_member.status.getType()
+    new_status = new_member.status.getType()
 
     # Handle different status change scenarios
     await _handle_status_changes(client, chat_id, user_id, old_status, new_status)
-    return None
+    return
 
 
 async def _validate_chat(client: Client, chat_id: int) -> bool:
@@ -295,7 +313,7 @@ async def _update_user_status_cache(
         LOGGER.warning("Error getting client for chat %s: %s", chat_id, ub)
         return
 
-    if user_id == ub.me.id:
+    if ub.me is not None and user_id == ub.me.id:
         cache_key = f"{chat_id}:{ub.me.id}"
         user_status_cache[cache_key] = status
 
@@ -317,13 +335,15 @@ async def new_message(client: Client, update: types.UpdateNewMessage) -> None:
         return
 
     chat_id = message.chat_id
+    if chat_id is None:
+        return
     content = message.content
 
     # Run DB operation in the background
     if chat_id < 0:
-        client.loop.create_task(db.add_chat(chat_id))
+        asyncio.create_task(db.add_chat(chat_id))
     else:
-        client.loop.create_task(db.add_user(chat_id))
+        asyncio.create_task(db.add_user(chat_id))
 
     # Handle video chat events
     if isinstance(content, types.MessageVideoChatEnded):

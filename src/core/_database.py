@@ -2,7 +2,8 @@
 #  Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
-from typing import Optional
+
+from typing import Any
 
 from cachetools import TTLCache
 from pymongo import AsyncMongoClient
@@ -29,16 +30,18 @@ class Database:
         bot_cache: A TTL cache for bot settings.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes the database connection and collections."""
-        self.mongo_client = AsyncMongoClient(config.MONGO_URI)
+        self.mongo_client: AsyncMongoClient[dict[str, Any]] = AsyncMongoClient(
+            config.MONGO_URI
+        )
         _db = self.mongo_client[config.DB_NAME]
         self.chat_db = _db["chats"]
         self.users_db = _db["users"]
         self.bot_db = _db["bot"]
 
-        self.chat_cache = TTLCache(maxsize=1000, ttl=1200)
-        self.bot_cache = TTLCache(maxsize=1000, ttl=1200)
+        self.chat_cache = TTLCache[int, dict[str, Any]](maxsize=1000, ttl=1200)
+        self.bot_cache = TTLCache[int, dict[str, Any]](maxsize=1000, ttl=1200)
 
     async def ping(self) -> None:
         """Checks the database connection by sending a ping command.
@@ -57,9 +60,9 @@ class Database:
             ) from e
         except Exception as e:
             LOGGER.error("Database connection failed: %s", e)
-            raise RuntimeError(f"Database connection failed.{str(e)}") from e
+            raise RuntimeError(f"Database connection failed.{e!s}") from e
 
-    async def get_chat(self, chat_id: int) -> Optional[dict]:
+    async def get_chat(self, chat_id: int) -> dict[str, Any] | None:
         """Retrieves chat data from the cache or database.
 
         Args:
@@ -90,7 +93,7 @@ class Database:
                 {"_id": chat_id}, {"$setOnInsert": {}}, upsert=True
             )
 
-    async def _update_chat_field(self, chat_id: int, key: str, value) -> None:
+    async def _update_chat_field(self, chat_id: int, key: str, value: Any) -> None:
         """A helper method to update a specific field in a chat's document.
 
         This method also updates the corresponding value in the cache.
@@ -128,7 +131,7 @@ class Database:
         """
         await self._update_chat_field(chat_id, "play_type", play_type)
 
-    async def get_assistant(self, chat_id: int) -> Optional[str]:
+    async def get_assistant(self, chat_id: int) -> str | None:
         """Gets the assigned assistant for a chat.
 
         Args:
@@ -188,11 +191,12 @@ class Database:
         await self.chat_db.update_one(
             {"_id": chat_id}, {"$addToSet": {"auth_users": auth_user}}, upsert=True
         )
-        chat = await self.get_chat(chat_id)
+        chat = await self.get_chat(chat_id) or {}
         auth_users = chat.get("auth_users", [])
         if auth_user not in auth_users:
             auth_users.append(auth_user)
-        self.chat_cache[chat_id]["auth_users"] = auth_users
+        chat["auth_users"] = auth_users
+        self.chat_cache[chat_id] = chat
 
     async def remove_auth_user(self, chat_id: int, auth_user: int) -> None:
         """Removes a user from the list of authorized users for a chat.
@@ -204,11 +208,12 @@ class Database:
         await self.chat_db.update_one(
             {"_id": chat_id}, {"$pull": {"auth_users": auth_user}}
         )
-        chat = await self.get_chat(chat_id)
+        chat = await self.get_chat(chat_id) or {}
         auth_users = chat.get("auth_users", [])
         if auth_user in auth_users:
             auth_users.remove(auth_user)
-        self.chat_cache[chat_id]["auth_users"] = auth_users
+        chat["auth_users"] = auth_users
+        self.chat_cache[chat_id] = chat
 
     async def reset_auth_users(self, chat_id: int) -> None:
         """Removes all authorized users from a chat.
@@ -347,8 +352,8 @@ class Database:
         Returns:
             bool: The logger status (enabled/disabled). Defaults to False.
         """
-        if bot_id in self.bot_cache and self.bot_cache[bot_id].get("logger"):
-            return self.bot_cache[bot_id].get("logger")
+        if bot_id in self.bot_cache and "logger" in self.bot_cache[bot_id]:
+            return bool(self.bot_cache[bot_id].get("logger", False))
 
         bot_data = await self.bot_db.find_one({"_id": bot_id})
         status = bot_data.get("logger", False) if bot_data else False
@@ -385,8 +390,8 @@ class Database:
         Returns:
             bool: The auto-end status. Defaults to True.
         """
-        if bot_id in self.bot_cache and self.bot_cache[bot_id].get("auto_end"):
-            return self.bot_cache[bot_id].get("auto_end")
+        if bot_id in self.bot_cache and "auto_end" in self.bot_cache[bot_id]:
+            return bool(self.bot_cache[bot_id].get("auto_end", True))
 
         bot_data = await self.bot_db.find_one({"_id": bot_id})
         status = bot_data.get("auto_end", True) if bot_data else True

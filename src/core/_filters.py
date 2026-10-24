@@ -3,9 +3,8 @@
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
 import re
-from typing import Union
 
-from pytdbot import filters, types
+from pytdbot import Client, filters, types
 
 
 class Filter:
@@ -18,7 +17,7 @@ class Filter:
     """
 
     @staticmethod
-    def _extract_text(event) -> str | None:
+    def _extract_text(event: object) -> str | None:
         """Extracts text content from various pytdbot event types.
 
         This is a helper method to safely retrieve text from `Message`,
@@ -30,20 +29,18 @@ class Filter:
         Returns:
             str | None: The extracted text or None if no text is found.
         """
-        if isinstance(event, types.Message) and hasattr(event.content, "text"):
-            return event.content.text.text
-        if isinstance(event, types.UpdateNewMessage) and hasattr(event.message, "text"):
-            return event.message.text
-        if isinstance(event, types.UpdateNewCallbackQuery) and getattr(
-            event, "payload", None
-        ):
-            return event.payload.data.decode(errors="ignore")
+        if isinstance(event, types.UpdateNewMessage):
+            event = event.message
+        if isinstance(event, types.Message):
+            return event.text or event.caption or None
+        if isinstance(event, types.UpdateNewCallbackQuery):
+            payload = event.payload
+            if isinstance(payload, types.CallbackQueryPayloadData) and payload.data:
+                return payload.data.decode(errors="ignore")
         return None
 
     @staticmethod
-    def command(
-        commands: Union[str, list[str]], prefixes: str = "/!"
-    ) -> filters.Filter:
+    def command(commands: str | list[str], prefixes: str = "/!") -> filters.Filter:
         """Creates a filter for bot commands.
 
         This filter matches messages that start with a specified prefix
@@ -63,10 +60,10 @@ class Filter:
         commands_set = {cmd.lower() for cmd in commands}
 
         pattern = re.compile(
-            rf"^[{re.escape(prefixes)}](\w+)(?:@(\w+))?", re.IGNORECASE
+            rf"^[{re.escape(prefixes)}](\w+)(?:@(\w+))?(?=\s|$)", re.IGNORECASE
         )
 
-        async def filter_func(client, event) -> bool:
+        async def filter_func(client: Client, event: object) -> bool:
             text = Filter._extract_text(event)
             if not text:
                 return False
@@ -80,7 +77,11 @@ class Filter:
                 return False
 
             if mentioned_bot:
-                bot_username = getattr(client.me.usernames, "editable_username", None)
+                bot_username = (
+                    client.me.usernames.editable_username
+                    if client.me and client.me.usernames
+                    else None
+                )
                 return (
                     bool(bot_username) and mentioned_bot.lower() == bot_username.lower()
                 )
@@ -104,7 +105,7 @@ class Filter:
         """
         compiled = re.compile(pattern)
 
-        async def filter_func(_, event) -> bool:
+        async def filter_func(_: Client, event: object) -> bool:
             text = Filter._extract_text(event)
             return bool(compiled.search(text)) if text else False
 

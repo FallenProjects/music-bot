@@ -5,9 +5,10 @@
 import asyncio
 from io import BytesIO
 
-from py_yt.core.session import get_session
 from aiofiles.os import path as aiopath
+from aiohttp import ClientTimeout
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from py_yt.core.session import get_session
 
 from src.logger import LOGGER
 
@@ -92,7 +93,7 @@ async def fetch_image(url: str) -> Image.Image | None:
             url = url.replace("500x500bb.jpg", "600x600bb.jpg")
 
         session = await get_session()
-        async with session.get(url, timeout=5) as response:
+        async with session.get(url, timeout=ClientTimeout(total=5)) as response:
             response.raise_for_status()
             data = await response.read()
 
@@ -100,9 +101,7 @@ async def fetch_image(url: str) -> Image.Image | None:
 
         if url.startswith("https://i.ytimg.com"):
             img = resize_youtube_thumbnail(img)
-        elif url.startswith("http://c.saavncdn.com") or url.startswith(
-            "https://i1.sndcdn"
-        ):
+        elif url.startswith(("http://c.saavncdn.com", "https://i1.sndcdn")):
             img = resize_jiosaavn_thumbnail(img)
 
         return img
@@ -123,7 +122,7 @@ def clean_text(text: str, limit: int = 17) -> str:
         str: The cleaned and possibly truncated string.
     """
     text = text.strip()
-    return f"{text[:limit - 3]}..." if len(text) > limit else text
+    return f"{text[: limit - 3]}..." if len(text) > limit else text
 
 
 def add_controls(img: Image.Image) -> Image.Image:

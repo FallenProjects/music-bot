@@ -2,7 +2,8 @@
 #  Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
-from typing import Union
+
+from collections.abc import Awaitable, Callable
 
 from pytdbot import Client, types
 
@@ -24,6 +25,8 @@ async def set_play_type(_: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         return
 
@@ -44,7 +47,7 @@ async def set_play_type(_: Client, msg: types.Message) -> None:
 
 async def is_admin_or_reply(
     msg: types.Message,
-) -> Union[int, types.Message, types.Error]:
+) -> int | types.Message | types.Error:
     """Checks if a command can be executed by verifying an active playback session.
 
     Note: The name is slightly misleading. The `@admins_only` decorator handles
@@ -59,6 +62,8 @@ async def is_admin_or_reply(
             or a message/error object if there's no active session.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return types.Error(code=400, message="Missing chat ID")
 
     if not chat_cache.is_active(chat_id):
         return await msg.reply_text("⏸ No active playback session")
@@ -67,7 +72,11 @@ async def is_admin_or_reply(
 
 
 async def handle_playback_action(
-    c: Client, msg: types.Message, action, success_msg: str, fail_msg: str
+    c: Client,
+    msg: types.Message,
+    action: Callable[[int], Awaitable[types.Ok | types.Error]],
+    success_msg: str,
+    fail_msg: str,
 ) -> None:
     """A generic handler for simple playback control commands.
 
@@ -95,7 +104,7 @@ async def handle_playback_action(
         await msg.reply_text(f"⚠️ {fail_msg}\n<code>{result.message}</code>")
         return
 
-    await msg.reply_text(f"{success_msg}\n" f"└ Requested by: {await msg.mention()}")
+    await msg.reply_text(f"{success_msg}\n└ Requested by: {await msg.mention()}")
 
 
 @Client.on_message(filters=Filter.command("pause"))

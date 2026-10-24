@@ -25,43 +25,49 @@ async def remove_song(c: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
-        return None
+        return
 
     args = extract_argument(msg.text, enforce_digit=True)
     if not chat_cache.is_active(chat_id):
         await msg.reply_text("⏸ No active playback session.")
-        return None
+        return
 
     if not args:
         await msg.reply_text(
             "ℹ️ <b>Usage:</b> <code>/remove [track_number]</code>\n"
             "Example: <code>/remove 3</code>"
         )
-        return None
+        return
 
     try:
         track_num = int(args)
     except ValueError:
         await msg.reply_text("⚠️ Please enter a valid track number.")
-        return None
+        return
 
     _queue = chat_cache.get_queue(chat_id)
     if not _queue:
         await msg.reply_text("📭 The queue is currently empty.")
-        return None
+        return
+
+    if track_num == 1:
+        await msg.reply_text("Use /skip to remove the currently playing track.")
+        return
 
     if track_num <= 0 or track_num > len(_queue):
         await msg.reply_text(
             f"⚠️ Invalid track number. Please choose between 1 and {len(_queue)}."
         )
-        return None
+        return
 
-    chat_cache.remove_track(chat_id, track_num)
+    chat_cache.remove_track(chat_id, track_num - 1)
     reply = await msg.reply_text(
         f"✅ Track No. {track_num} removed by {await msg.mention()}"
     )
 
     if isinstance(reply, types.Error):
         c.logger.warning(f"Error sending reply: {reply.message}")
-    return None
+    return

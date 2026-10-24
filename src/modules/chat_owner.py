@@ -26,6 +26,8 @@ async def buttons(_: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         return
 
@@ -75,6 +77,8 @@ async def thumbnail(_: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         return
 

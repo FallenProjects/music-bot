@@ -7,7 +7,7 @@ import os
 import random
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from py_yt import Playlist, VideosSearch
 from pytdbot import types
@@ -17,7 +17,7 @@ from src.logger import LOGGER
 from ._config import config
 from ._dataclass import MusicTrack, PlatformTracks, TrackInfo
 from ._downloader import MusicService
-from ._httpx import HttpxClient
+from ._httpx import http_client
 
 
 class YouTubeUtils:
@@ -62,7 +62,7 @@ class YouTubeUtils:
         return query.split("&")[0].split("#")[0].strip()
 
     @staticmethod
-    def is_valid_url(url: Optional[str]) -> bool:
+    def is_valid_url(url: str | None) -> bool:
         """Checks if a URL is a valid YouTube URL (video, playlist, or short).
 
         Args:
@@ -83,7 +83,7 @@ class YouTubeUtils:
         )
 
     @staticmethod
-    def _extract_video_id(url: str) -> Optional[str]:
+    def _extract_video_id(url: str) -> str | None:
         """Extracts the video ID from various YouTube URL formats.
 
         Args:
@@ -101,7 +101,7 @@ class YouTubeUtils:
         return None
 
     @staticmethod
-    async def normalize_youtube_url(url: str) -> Optional[str]:
+    async def normalize_youtube_url(url: str) -> str | None:
         """Normalizes different YouTube URL formats to the standard watch URL.
 
         This handles formats like `youtu.be` and `/shorts/`.
@@ -129,7 +129,7 @@ class YouTubeUtils:
         return url
 
     @staticmethod
-    def create_platform_tracks(data: Dict[str, Any]) -> PlatformTracks:
+    def create_platform_tracks(data: dict[str, Any]) -> PlatformTracks:
         """Creates a `PlatformTracks` object from a dictionary of data.
 
         Args:
@@ -150,7 +150,7 @@ class YouTubeUtils:
         return PlatformTracks(results=valid_tracks)
 
     @staticmethod
-    def format_track(track_data: Dict[str, Any]) -> Dict[str, Any]:
+    def format_track(track_data: dict[str, Any]) -> dict[str, Any]:
         """Formats raw track data into a standardized dictionary structure.
 
         Args:
@@ -222,7 +222,7 @@ class YouTubeUtils:
             return 0
 
     @staticmethod
-    async def get_cookie_file() -> Optional[str]:
+    async def get_cookie_file() -> str | None:
         """Gets the path of a random cookie file from the cookies directory.
 
         This is used to bypass YouTube's throttling for `yt-dlp`.
@@ -251,7 +251,7 @@ class YouTubeUtils:
             return None
 
     @staticmethod
-    async def fetch_oembed_data(url: str) -> Optional[dict[str, Any]]:
+    async def fetch_oembed_data(url: str) -> dict[str, Any] | None:
         """Fetches video metadata using YouTube's oEmbed endpoint.
 
         This is a lightweight way to get basic video information like title
@@ -265,7 +265,7 @@ class YouTubeUtils:
                 track data, or None on failure.
         """
         oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
-        data = await HttpxClient().make_request(oembed_url, max_retries=1)
+        data = await http_client.make_request(oembed_url, max_retries=1)
         if data:
             video_id = url.split("v=")[1]
             return {
@@ -285,9 +285,7 @@ class YouTubeUtils:
         return None
 
     @staticmethod
-    async def download_with_api(
-        video_id: str, is_video: bool = False
-    ) -> Union[None, Path]:
+    async def download_with_api(video_id: str, is_video: bool = False) -> None | Path:
         """Downloads a track using the configured external API.
 
         This method can handle direct downloads or resolve Telegram file links.
@@ -301,7 +299,7 @@ class YouTubeUtils:
             Union[None, Path]: The path to the downloaded file, or None on failure.
         """
         video_url = f"https://www.youtube.com/watch?v={video_id}"
-        httpx = HttpxClient()
+        httpx = http_client
         get_track = await httpx.make_request(
             f"{config.API_URL}/api/track?url={video_url}&video={is_video}"
         )
@@ -309,7 +307,11 @@ class YouTubeUtils:
             LOGGER.error("Response from API is empty")
             return None
 
-        track = TrackInfo(**get_track)
+        try:
+            track = TrackInfo.model_validate(get_track)
+        except ValueError:
+            LOGGER.error("Invalid track data returned by API")
+            return None
         cdnurl = track.cdnurl
         if not cdnurl:
             LOGGER.error("CDN URL not found in response")
@@ -341,7 +343,7 @@ class YouTubeUtils:
 
     @staticmethod
     def _build_ytdlp_params(
-        video_id: str, video: bool, cookie_file: Optional[str]
+        video_id: str, video: bool, cookie_file: str | None
     ) -> list[str]:
         """Constructs the list of command-line arguments for `yt-dlp`.
 
@@ -403,7 +405,7 @@ class YouTubeUtils:
         return ytdlp_params
 
     @staticmethod
-    async def download_with_yt_dlp(video_id: str, video: bool) -> Optional[Path]:
+    async def download_with_yt_dlp(video_id: str, video: bool) -> Path | None:
         """Downloads YouTube media using the `yt-dlp` command-line tool.
 
         This method constructs and executes a `yt-dlp` command to download
@@ -456,7 +458,7 @@ class YouTubeUtils:
             LOGGER.info("Successfully downloaded %s to %s", video_id, downloaded_path)
             return downloaded_path
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             LOGGER.error("yt-dlp timed out for video ID: %s", video_id)
             return None
         except Exception as e:
@@ -473,7 +475,7 @@ class YouTubeData(MusicService):
     and downloading tracks and playlists from YouTube.
     """
 
-    def __init__(self, query: Optional[str] = None) -> None:
+    def __init__(self, query: str | None = None) -> None:
         """Initializes the YouTubeData handler.
 
         Args:
@@ -490,7 +492,7 @@ class YouTubeData(MusicService):
         """
         return YouTubeUtils.is_valid_url(self.query)
 
-    async def get_info(self) -> Union[PlatformTracks, types.Error]:
+    async def get_info(self) -> PlatformTracks | types.Error:
         """Retrieves track or playlist information from a YouTube URL.
 
         Returns:
@@ -507,7 +509,7 @@ class YouTubeData(MusicService):
 
         return YouTubeUtils.create_platform_tracks(data)
 
-    async def search(self) -> Union[PlatformTracks, types.Error]:
+    async def search(self) -> PlatformTracks | types.Error:
         """Searches YouTube for videos matching the query.
 
         If the query is a valid URL, it retrieves the info directly.
@@ -541,9 +543,9 @@ class YouTubeData(MusicService):
 
         except Exception as error:
             LOGGER.error(f"YouTube search failed for '{self.query}': {error}")
-            return types.Error(code=500, message=f"Search failed: {str(error)}")
+            return types.Error(code=500, message=f"Search failed: {error!s}")
 
-    async def get_track(self) -> Union[TrackInfo, types.Error]:
+    async def get_track(self) -> TrackInfo | types.Error:
         """Gets detailed information for a single YouTube video.
 
         Returns:
@@ -568,7 +570,7 @@ class YouTubeData(MusicService):
 
     async def download_track(
         self, track: TrackInfo, video: bool = False
-    ) -> Union[Path, types.Error]:
+    ) -> Path | types.Error:
         """Downloads a track from YouTube.
 
         It first attempts to download using the configured API, and falls back
@@ -599,7 +601,7 @@ class YouTubeData(MusicService):
 
         return dl_path
 
-    async def _fetch_data(self, url: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_data(self, url: str) -> dict[str, Any] | None:
         """Internal helper method to fetch data for a YouTube URL.
 
         It determines if the URL is a video or playlist and calls the
@@ -623,7 +625,7 @@ class YouTubeData(MusicService):
             return None
 
     @staticmethod
-    async def _get_video_data(url: str) -> Optional[Dict[str, Any]]:
+    async def _get_video_data(url: str) -> dict[str, Any] | None:
         """Retrieves metadata for a single YouTube video.
 
         It first tries the lightweight oEmbed endpoint and falls back to the
@@ -657,7 +659,7 @@ class YouTubeData(MusicService):
             return None
 
     @staticmethod
-    async def _get_playlist_data(url: str) -> Optional[Dict[str, Any]]:
+    async def _get_playlist_data(url: str) -> dict[str, Any] | None:
         """Retrieves metadata for all videos in a YouTube playlist.
 
         Args:
@@ -668,15 +670,22 @@ class YouTubeData(MusicService):
                 tracks in the playlist, or None on failure.
         """
         try:
-            playlist = await Playlist.getVideos(url)
-            if not playlist or not playlist.get("videos"):
+            playlist: object = await Playlist.get_videos(url)
+            if isinstance(playlist, dict):
+                videos = playlist.get("videos", [])
+            elif isinstance(playlist, list):
+                videos = playlist
+            else:
+                return None
+            if not videos:
                 return None
 
             return {
                 "results": [
                     YouTubeUtils.format_track(track)
-                    for track in playlist["videos"]
-                    if track.get("id")  # Filter valid tracks
+                    for track in videos
+                    if isinstance(track, dict)
+                    and track.get("id")  # Filter valid tracks
                 ]
             }
         except Exception as error:

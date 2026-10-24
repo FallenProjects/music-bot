@@ -2,7 +2,6 @@
 # Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 # Part of the TgMusicBot project. All rights reserved where applicable.
 
-from typing import Union
 
 from pytdbot import Client, types
 
@@ -10,7 +9,7 @@ from src.core import Filter, admins_only, db
 from src.logger import LOGGER
 
 
-async def _validate_auth_command(msg: types.Message) -> Union[types.Message, None]:
+async def _validate_auth_command(msg: types.Message) -> types.Message | None:
     """Validates the context for an authorization command.
 
     This helper function checks if the command was used correctly, for example:
@@ -27,6 +26,8 @@ async def _validate_auth_command(msg: types.Message) -> Union[types.Message, Non
             chat upon validation failure.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         return None
 
@@ -78,6 +79,8 @@ async def auth(c: Client, msg: types.Message) -> None:
         return
 
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     user_id = reply.from_id
 
     if user_id in await db.get_auth_users(chat_id):
@@ -110,6 +113,8 @@ async def un_auth(c: Client, msg: types.Message) -> None:
         return
 
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     user_id = reply.from_id
 
     if user_id not in await db.get_auth_users(chat_id):
@@ -135,6 +140,8 @@ async def auth_list(c: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         reply = await msg.reply_text("❌ This command is only available in groups.")
         if isinstance(reply, types.Error):

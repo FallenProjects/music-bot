@@ -4,16 +4,26 @@
 
 import math
 import time
+from typing import TypedDict
 
 from pytdbot import Client, types
 
 from src.core import is_admin, tg
 from src.logger import LOGGER
 
-download_progress = {}
+
+class DownloadProgress(TypedDict):
+    start_time: float
+    last_update: float
+    last_size: int
+    next_update: float
+    last_speed: float
 
 
-def _format_bytes(size: int) -> str:
+download_progress: dict[int, DownloadProgress] = {}
+
+
+def _format_bytes(size: float) -> str:
     """Formats a size in bytes into a human-readable string (KB, MB, GB, etc.).
 
     Args:
@@ -113,7 +123,7 @@ def _get_button(unique_id: str) -> types.ReplyMarkupInlineKeyboard:
     )
 
 
-def _should_update(progress: dict, now: float, completed: bool) -> bool:
+def _should_update(progress: DownloadProgress, now: float, completed: bool) -> bool:
     """Determines if it's time to send a progress update message.
 
     Args:
@@ -174,7 +184,7 @@ def _build_complete_text(filename: str, total: int, duration: float) -> str:
 
 
 @Client.on_updateFile()
-async def update_file(client: Client, update: types.UpdateFile):
+async def update_file(client: Client, update: types.UpdateFile) -> None:
     """Handles `updateFile` events from `pytdbot` to show download progress.
 
     This function is the core of the download progress reporting system. It
@@ -187,7 +197,11 @@ async def update_file(client: Client, update: types.UpdateFile):
         update (types.UpdateFile): The file update object from pytdbot.
     """
     file = update.file
+    if file is None or file.remote is None or file.local is None or file.id is None:
+        return
     unique_id = file.remote.unique_id
+    if not unique_id:
+        return
     meta = tg.get_cached_metadata(unique_id)
     if not meta:
         return
@@ -199,7 +213,7 @@ async def update_file(client: Client, update: types.UpdateFile):
     now = time.time()
 
     total = file.size or 1
-    downloaded = file.local.downloaded_size
+    downloaded = file.local.downloaded_size or 0
 
     if file_id not in download_progress:
         download_progress[file_id] = {
@@ -212,7 +226,7 @@ async def update_file(client: Client, update: types.UpdateFile):
 
     progress = download_progress[file_id]
 
-    if not _should_update(progress, now, file.local.is_downloading_completed):
+    if not _should_update(progress, now, bool(file.local.is_downloading_completed)):
         return
 
     elapsed = now - progress["last_update"]
@@ -237,11 +251,14 @@ async def update_file(client: Client, update: types.UpdateFile):
             text=progress_text, parse_mode=types.TextParseModeHTML()
         )
 
+        if isinstance(parsed, types.Error):
+            LOGGER.error("Cannot parse progress message: %s", parsed)
+            return
         edit = await client.editMessageText(
             chat_id=chat_id,
             message_id=message_id,
             reply_markup=button_markup,
-            input_message_content=types.InputMessageText(text=parsed)
+            input_message_content=types.InputMessageText(text=parsed),
         )
         if isinstance(edit, types.Error):
             LOGGER.error("Progress update error: %s", edit)
@@ -250,12 +267,17 @@ async def update_file(client: Client, update: types.UpdateFile):
     # Completed download
     duration = now - progress["start_time"]
     complete_text = _build_complete_text(filename, total, duration)
-    parsed = await client.parseTextEntities(text=complete_text, parse_mode=types.TextParseModeHTML())
+    parsed = await client.parseTextEntities(
+        text=complete_text, parse_mode=types.TextParseModeHTML()
+    )
+    if isinstance(parsed, types.Error):
+        LOGGER.error("Cannot parse completion message: %s", parsed)
+        return
     done = await client.editMessageText(
         chat_id=chat_id,
         message_id=message_id,
         reply_markup=button_markup,
-        input_message_content=types.InputMessageText(text=parsed)
+        input_message_content=types.InputMessageText(text=parsed),
     )
     if isinstance(done, types.Error):
         LOGGER.error("Download complete update error: %s", done)
@@ -270,7 +292,7 @@ async def _handle_play_c_data(
     user_id: int,
     user_name: str,
     c: Client,
-):
+) -> None:
     """Handles the callback query for cancelling a file download.
 
     This function is triggered when a user clicks the "Stop Downloading"

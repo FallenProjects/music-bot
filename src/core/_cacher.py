@@ -4,26 +4,33 @@
 
 from collections import deque
 from pathlib import Path
-from typing import Any, Optional, TypeAlias, Union
+from typing import TypeAlias, TypedDict
 
 from cachetools import TTLCache
 from pytdbot import types
 
 from src.core._dataclass import CachedTrack
 
-chat_invite_cache = TTLCache(maxsize=1000, ttl=1000)
+chat_invite_cache = TTLCache[int, str](maxsize=1000, ttl=1000)
 
-ChatMemberStatus: TypeAlias = Union[
-    types.ChatMemberStatusCreator,
-    types.ChatMemberStatusAdministrator,
-    types.ChatMemberStatusMember,
-    types.ChatMemberStatusRestricted,
-    types.ChatMemberStatusLeft,
-    types.ChatMemberStatusBanned,
-]
+ChatMemberStatus: TypeAlias = (
+    types.ChatMemberStatusCreator
+    | types.ChatMemberStatusAdministrator
+    | types.ChatMemberStatusMember
+    | types.ChatMemberStatusRestricted
+    | types.ChatMemberStatusLeft
+    | types.ChatMemberStatusBanned
+)
 
-ChatMemberStatusResult: TypeAlias = Union[ChatMemberStatus, types.Error]
-user_status_cache: TTLCache[str, ChatMemberStatus] = TTLCache(maxsize=5000, ttl=1000)
+ChatMemberStatusResult: TypeAlias = ChatMemberStatus | types.Error
+user_status_cache: TTLCache[str, ChatMemberStatus] = TTLCache[str, ChatMemberStatus](
+    maxsize=5000, ttl=1000
+)
+
+
+class ChatState(TypedDict):
+    is_active: bool
+    queue: deque[CachedTrack]
 
 
 class ChatCacher:
@@ -39,9 +46,9 @@ class ChatCacher:
             contains its song queue and activity status.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes the ChatCacher with an empty cache."""
-        self.chat_cache: dict[int, dict[str, Any]] = {}
+        self.chat_cache: dict[int, ChatState] = {}
 
     def add_song(self, chat_id: int, song: CachedTrack) -> CachedTrack:
         """Adds a song to the queue of a specific chat.
@@ -62,7 +69,7 @@ class ChatCacher:
         data["queue"].append(song)
         return song
 
-    def get_upcoming_track(self, chat_id: int) -> Optional[CachedTrack]:
+    def get_upcoming_track(self, chat_id: int) -> CachedTrack | None:
         """Retrieves the next song in the queue for a chat.
 
         Args:
@@ -75,7 +82,7 @@ class ChatCacher:
         queue = self.chat_cache.get(chat_id, {}).get("queue")
         return queue[1] if queue and len(queue) > 1 else None
 
-    def get_playing_track(self, chat_id: int) -> Optional[CachedTrack]:
+    def get_playing_track(self, chat_id: int) -> CachedTrack | None:
         """Retrieves the currently playing song for a chat.
 
         Args:
@@ -89,7 +96,7 @@ class ChatCacher:
 
     def remove_current_song(
         self, chat_id: int, disk_clear: bool = True
-    ) -> Optional[CachedTrack]:
+    ) -> CachedTrack | None:
         """Removes the current song from a chat's queue.
 
         This also handles the deletion of the associated audio file and
@@ -109,18 +116,8 @@ class ChatCacher:
             return None
 
         removed = queue.popleft()
-        if disk_clear and getattr(removed, "file_path", None):
-            try:
-                file_path = (
-                    Path(removed.file_path)
-                    if isinstance(removed.file_path, str)
-                    else removed.file_path
-                )
-                file_path.unlink(missing_ok=True)
-                thumb_path = Path(f"database/photos/{removed.track_id}.png")
-                thumb_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        if disk_clear:
+            self._delete_track_files(removed)
         return removed
 
     def is_active(self, chat_id: int) -> bool:
@@ -134,7 +131,7 @@ class ChatCacher:
         """
         return self.chat_cache.get(chat_id, {}).get("is_active", False)
 
-    def set_active(self, chat_id: int, active: bool):
+    def set_active(self, chat_id: int, active: bool) -> None:
         """Sets the active status for a chat's music session.
 
         Args:
@@ -146,7 +143,7 @@ class ChatCacher:
         )
         data["is_active"] = active
 
-    def clear_chat(self, chat_id: int, disk_clear: bool = True):
+    def clear_chat(self, chat_id: int, disk_clear: bool = True) -> None:
         """Clears all cached data for a chat, including the queue.
 
         If `disk_clear` is True, it also deletes all associated song files
@@ -157,20 +154,35 @@ class ChatCacher:
             disk_clear (bool): If True, deletes song files from disk.
                 Defaults to True.
         """
-        if disk_clear and chat_id in self.chat_cache:
-            queue = self.chat_cache[chat_id].get("queue", deque())
-            for track in queue:
-                if track.file_path:
-                    try:
-                        file_path = (
-                            Path(track.file_path)
-                            if isinstance(track.file_path, str)
-                            else track.file_path
-                        )
-                        file_path.unlink(missing_ok=True)
-                    except (OSError, TypeError, AttributeError, KeyError):
-                        pass
-        self.chat_cache.pop(chat_id, None)
+        data = self.chat_cache.pop(chat_id, {})
+        if disk_clear:
+            for track in data.get("queue", ()):
+                self._delete_track_files(track)
+
+    def _delete_track_files(self, track: CachedTrack) -> None:
+        """Delete a track's files only after every chat has released them."""
+        others = [item for data in self.chat_cache.values() for item in data["queue"]]
+        try:
+            if track.file_path and not any(
+                item.file_path == track.file_path for item in others
+            ):
+                Path(track.file_path).unlink(missing_ok=True)
+            if not any(item.track_id == track.track_id for item in others):
+                Path(f"database/photos/{track.track_id}.png").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def clear_pending(self, chat_id: int) -> None:
+        """Remove queued tracks while keeping the current stream active."""
+        data = self.chat_cache.get(chat_id)
+        if data is None:
+            return
+        queue = data["queue"]
+        removed = []
+        while len(queue) > 1:
+            removed.append(queue.pop())
+        for track in removed:
+            self._delete_track_files(track)
 
     def get_queue_length(self, chat_id: int) -> int:
         """Gets the number of songs in a chat's queue.
@@ -223,8 +235,9 @@ class ChatCacher:
         queue = self.chat_cache.get(chat_id, {}).get("queue")
         if queue and 0 <= queue_index < len(queue):
             queue_list = list(queue)
-            queue_list.pop(queue_index)
+            removed = queue_list.pop(queue_index)
             self.chat_cache[chat_id]["queue"] = deque(queue_list)
+            self._delete_track_files(removed)
             return True
         return False
 

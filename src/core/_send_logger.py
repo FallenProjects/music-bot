@@ -6,7 +6,7 @@ from ._config import config
 from ._dataclass import CachedTrack
 
 
-async def send_logger(client: Client, chat_id, song: CachedTrack):
+async def send_logger(client: Client, chat_id: int, song: CachedTrack | None) -> None:
     """
     Send a message to the logger channel when a song is played.
 

@@ -67,8 +67,8 @@ async def send_message_with_retry(
                 # FloodWait
                 if result.code == 429:
                     retry_after = (
-                        int(result.message.split("retry after ")[1])
-                        if "retry after" in result.message
+                        int((result.message or "").split("retry after ")[1])
+                        if "retry after" in (result.message or "")
                         else 1
                     )
 
@@ -136,7 +136,7 @@ async def broadcast_to_targets(
     """
     sent = failed = 0
 
-    async def process_batch(_batch: list[int], index: int):
+    async def process_batch(_batch: list[int], index: int) -> tuple[int, int]:
         results = await asyncio.gather(
             *[send_message_with_retry(tid, message, is_copy) for tid in _batch]
         )
@@ -194,7 +194,7 @@ async def broadcast(c: Client, message: types.Message) -> None:
         )
         if isinstance(reply, types.Error):
             c.logger.warning(reply.message)
-        return None
+        return
 
     parts = args.lower().split()
     is_copy = "copy" in parts
@@ -206,14 +206,14 @@ async def broadcast(c: Client, message: types.Message) -> None:
         )
         if isinstance(reply, types.Error):
             c.logger.warning(reply.message)
-        return None
+        return
 
     reply = await message.getRepliedMessage() if message.reply_to_message_id else None
     if not reply or isinstance(reply, types.Error):
         _reply = await message.reply_text("Please reply to a message to broadcast.")
         if isinstance(_reply, types.Error):
             c.logger.warning(_reply.message)
-        return None
+        return
 
     users, chats = await get_broadcast_targets(target)
     total_targets = len(users) + len(chats)
@@ -222,7 +222,7 @@ async def broadcast(c: Client, message: types.Message) -> None:
         _reply = await message.reply_text("No users or chats to broadcast to.")
         if isinstance(_reply, types.Error):
             c.logger.warning(_reply.message)
-        return None
+        return
 
     started = await message.reply_text(
         text=f"📣 Starting broadcast to {total_targets} target(s)...\n"
@@ -235,7 +235,7 @@ async def broadcast(c: Client, message: types.Message) -> None:
     if isinstance(started, types.Error):
         c.logger.warning("Error starting broadcast: %s", started)
         await message.reply_text(f"Failed to start broadcast.{started.message}")
-        return None
+        return
 
     start_time = time.monotonic()
     user_sent, user_failed = await broadcast_to_targets(users, reply, is_copy)
@@ -256,4 +256,4 @@ async def broadcast(c: Client, message: types.Message) -> None:
 
     if isinstance(reply, types.Error):
         c.logger.warning("Error sending broadcast summary: %s", reply)
-    return None
+    return

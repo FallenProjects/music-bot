@@ -6,8 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 LOG_FORMAT = (
-    "[%(asctime)s - %(levelname)s] - %(name)s - "
-    "%(filename)s:%(lineno)d - %(message)s"
+    "[%(asctime)s - %(levelname)s] - %(name)s - %(filename)s:%(lineno)d - %(message)s"
 )
 
 formatter = logging.Formatter(LOG_FORMAT, datefmt="%d-%b-%y %H:%M:%S")

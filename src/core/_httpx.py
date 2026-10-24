@@ -8,7 +8,8 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from types import TracebackType
+from typing import Any, Self
 from urllib.parse import unquote
 
 import aiofiles
@@ -32,9 +33,9 @@ class DownloadResult:
     """
 
     success: bool
-    file_path: Optional[Path] = None
-    error: Optional[str] = None
-    status_code: Optional[int] = None
+    file_path: Path | None = None
+    error: str | None = None
+    status_code: int | None = None
 
 
 class HttpxClient:
@@ -88,20 +89,37 @@ class HttpxClient:
             connect=self._timeout,
         )
 
-        self._session = aiohttp.ClientSession(
-            timeout=self._request_timeout,
-            connector=aiohttp.TCPConnector(),
-        )
+        self._session: aiohttp.ClientSession | None = None
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        """Create the connection pool on the running event loop, on first use."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=self._request_timeout)
+        return self._session
+
+    async def __aenter__(self) -> Self:
+        self._get_session()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.close()
 
     async def close(self) -> None:
         """Closes the underlying aiohttp session gracefully."""
         try:
-            await self._session.close()
+            if self._session is not None:
+                await self._session.close()
+                self._session = None
         except Exception as e:
             LOGGER.error("Error closing HTTP session: %s", repr(e), exc_info=True)
 
     @staticmethod
-    def _set_headers(url: str, base_headers: Dict[str, str]) -> Dict[str, str]:
+    def _set_headers(url: str, base_headers: dict[str, str]) -> dict[str, str]:
         """Sets appropriate headers for a request.
 
         It adds an API key header if the request is being made to the bot's
@@ -115,7 +133,14 @@ class HttpxClient:
             Dict[str, str]: The final dictionary of headers for the request.
         """
         headers = base_headers.copy()
-        if config.API_URL and url.startswith(config.API_URL):
+        if (
+            config.API_URL
+            and config.API_KEY
+            and (
+                url == config.API_URL.rstrip("/")
+                or url.startswith(config.API_URL.rstrip("/") + "/")
+            )
+        ):
             headers["X-API-Key"] = config.API_KEY
         return headers
 
@@ -151,7 +176,7 @@ class HttpxClient:
     async def download_file(
         self,
         url: str,
-        file_path: Optional[Union[str, Path]] = None,
+        file_path: str | Path | None = None,
         overwrite: bool = False,
         **kwargs: Any,
     ) -> DownloadResult:
@@ -181,7 +206,7 @@ class HttpxClient:
         allow_redirects = self._max_redirects > 0
 
         try:
-            async with self._session.get(
+            async with self._get_session().get(
                 url,
                 headers=headers,
                 timeout=self._download_timeout_obj,
@@ -189,7 +214,7 @@ class HttpxClient:
                 max_redirects=self._max_redirects if allow_redirects else 0,
                 **kwargs,
             ) as response:
-                if response.status >= 400:
+                if not 200 <= response.status < 300:
                     error_msg = await self._parse_error_response(response)
                     LOGGER.error(
                         "Download failed for %s with status %d: %s",
@@ -223,12 +248,14 @@ class HttpxClient:
 
                 try:
                     async with aiofiles.open(temp_path, "wb") as f:
-                        async for chunk in response.content.iter_chunked(self.CHUNK_SIZE):
+                        async for chunk in response.content.iter_chunked(
+                            self.CHUNK_SIZE
+                        ):
                             await f.write(chunk)
-                except Exception as e:
+                except BaseException:
                     if temp_path.exists():
                         await os.remove(temp_path)
-                    raise e
+                    raise
 
                 temp_path.rename(path)
 
@@ -248,17 +275,15 @@ class HttpxClient:
                 error_msg,
                 exc_info=True,
             )
-            return DownloadResult(
-                success=False, error=error_msg, status_code=e.status
-            )
+            return DownloadResult(success=False, error=error_msg, status_code=e.status)
 
         except aiohttp.ClientError as e:
-            error_msg = f"Request failed for {url}: {str(e)}"
+            error_msg = f"Request failed for {url}: {e!s}"
             LOGGER.error(error_msg, exc_info=True)
             return DownloadResult(success=False, error=error_msg)
 
         except Exception as e:
-            error_msg = f"Unexpected error downloading {url}: {str(e)}"
+            error_msg = f"Unexpected error downloading {url}: {e!s}"
             LOGGER.error(error_msg, exc_info=True)
             return DownloadResult(success=False, error=error_msg)
 
@@ -280,7 +305,7 @@ class HttpxClient:
         max_retries: int = MAX_RETRIES,
         backoff_factor: float = BACKOFF_FACTOR,
         **kwargs: Any,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Makes a GET request with retries and exponential backoff.
 
         This method handles transient network errors by retrying the request
@@ -309,7 +334,7 @@ class HttpxClient:
         for attempt in range(max_retries):
             try:
                 start = time.monotonic()
-                async with self._session.get(
+                async with self._get_session().get(
                     url,
                     headers=headers,
                     allow_redirects=allow_redirects,
@@ -318,7 +343,7 @@ class HttpxClient:
                 ) as response:
                     duration = time.monotonic() - start
 
-                    if response.status >= 400:
+                    if not 200 <= response.status < 300:
                         error_msg = await self._parse_error_response(response)
                         LOGGER.warning(
                             "Request to %s failed with status %d (attempt %d/%d): %s",
@@ -339,9 +364,13 @@ class HttpxClient:
                         duration,
                         response.status,
                     )
-                    return await response.json(content_type=None)
+                    data = await response.json(content_type=None)
+                    if not isinstance(data, dict):
+                        LOGGER.error("Expected a JSON object from %s", url)
+                        return None
+                    return data
 
-            except aiohttp.ClientError as e:
+            except (aiohttp.ClientError, TimeoutError) as e:
                 last_error = str(e)
                 LOGGER.warning(
                     "Request failed for %s (attempt %d/%d): %s",
@@ -354,14 +383,14 @@ class HttpxClient:
                     await asyncio.sleep(backoff_factor * (2**attempt))
 
             except ValueError as e:
-                last_error = f"Invalid JSON response: {str(e)}"
+                last_error = f"Invalid JSON response: {e!s}"
                 LOGGER.error(
                     "Failed to parse JSON from %s: %s", url, last_error, exc_info=True
                 )
                 return None
 
             except Exception as e:
-                last_error = f"Unexpected error: {str(e)}"
+                last_error = f"Unexpected error: {e!s}"
                 LOGGER.error(
                     "Unexpected error for %s: %s", url, last_error, exc_info=True
                 )
@@ -374,3 +403,12 @@ class HttpxClient:
             last_error,
         )
         return None
+
+
+http_client = HttpxClient()
+redirect_client = HttpxClient(max_redirects=1)
+
+
+async def close_http_clients() -> None:
+    """Release all application-owned HTTP connections during shutdown."""
+    await asyncio.gather(http_client.close(), redirect_client.close())

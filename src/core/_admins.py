@@ -2,8 +2,9 @@
 # Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 # Part of the TgMusicBot project. All rights reserved where applicable.
 
+from collections.abc import Awaitable, Callable
 from functools import partial, wraps
-from typing import Any, Callable, List, Literal, Optional, Tuple, Union
+from typing import Any, Literal, TypeVar, cast
 
 from cachetools import TTLCache
 from pytdbot import Client, types
@@ -11,8 +12,6 @@ from pytdbot import Client, types
 from ._config import config
 from ._database import db
 from ._filters import Filter
-
-admin_cache = TTLCache(maxsize=1000, ttl=60 * 60)
 
 ChatAdminPermissions = Literal[
     "can_manage_chat",
@@ -25,7 +24,8 @@ ChatAdminPermissions = Literal[
     "can_manage_video_chats",
 ]
 
-PermissionsType = Union[ChatAdminPermissions, List[ChatAdminPermissions], None]
+PermissionsType = ChatAdminPermissions | list[ChatAdminPermissions] | None
+Handler = TypeVar("Handler", bound=Callable[..., Awaitable[Any]])
 
 
 class AdminCache:
@@ -40,7 +40,7 @@ class AdminCache:
 
     def __init__(
         self, chat_id: int, user_info: list[types.ChatMember], cached: bool = True
-    ):
+    ) -> None:
         """Initializes the AdminCache instance.
 
         Args:
@@ -53,9 +53,12 @@ class AdminCache:
         self.cached = cached
 
 
+admin_cache = TTLCache[int, AdminCache](maxsize=1000, ttl=60 * 60)
+
+
 async def load_admin_cache(
     c: Client, chat_id: int, force_reload: bool = False
-) -> Tuple[bool, AdminCache]:
+) -> tuple[bool, AdminCache]:
     """Loads the admin list from Telegram and caches it.
 
     This function fetches the list of administrators for a given chat,
@@ -78,8 +81,7 @@ async def load_admin_cache(
         return True, admin_cache[chat_id]
 
     admin_list = await c.searchChatMembers(
-        chat_id=chat_id,
-        filter=types.ChatMembersFilterAdministrators()
+        chat_id=chat_id, filter=types.ChatMembersFilterAdministrators()
     )
     if isinstance(admin_list, types.Error):
         c.logger.warning(
@@ -87,13 +89,13 @@ async def load_admin_cache(
         )
         return False, AdminCache(chat_id, [], cached=False)
 
-    admin_cache[chat_id] = AdminCache(chat_id, admin_list["members"])
+    admin_cache[chat_id] = AdminCache(chat_id, admin_list.members or [])
     return True, admin_cache[chat_id]
 
 
 async def get_admin_cache_user(
     chat_id: int, user_id: int
-) -> Tuple[bool, Optional[dict]]:
+) -> tuple[bool, types.ChatMember | None]:
     """Retrieves a user's admin information from the cache.
 
     This function checks the cached admin list for a specific chat to find
@@ -117,16 +119,19 @@ async def get_admin_cache_user(
         (
             (True, user_info)
             for user_info in admin_list.user_info
-            if user_info["member_id"]["user_id"] == user_id
+            if isinstance(user_info.member_id, types.MessageSenderUser)
+            and user_info.member_id.user_id == user_id
         ),
         (False, None),
     )
 
 
-ANON = TTLCache(maxsize=250, ttl=60)
+ANON = TTLCache[
+    int, tuple[types.Message, Callable[..., Awaitable[Any]], PermissionsType]
+](maxsize=250, ttl=60)
 
 
-def ensure_permissions_list(permissions: PermissionsType) -> List[ChatAdminPermissions]:
+def ensure_permissions_list(permissions: PermissionsType) -> list[ChatAdminPermissions]:
     """Ensures that the given permissions are in a list format.
 
     Args:
@@ -174,7 +179,9 @@ async def check_permissions(
     if not user_info:
         return False
 
-    rights = user_info["status"]["rights"]
+    if not isinstance(user_info.status, types.ChatMemberStatusAdministrator):
+        return False
+    rights = user_info.status.rights
     return all(getattr(rights, perm, False) for perm in permissions_list)
 
 
@@ -194,8 +201,7 @@ async def is_owner(chat_id: int, user_id: int) -> bool:
     is_cached, user = await get_admin_cache_user(chat_id, user_id)
     if not user:
         return False
-    user_status = user["status"]["@type"]
-    return is_cached and user_status == "chatMemberStatusCreator"
+    return is_cached and isinstance(user.status, types.ChatMemberStatusCreator)
 
 
 async def is_admin(chat_id: int, user_id: int) -> bool:
@@ -218,11 +224,10 @@ async def is_admin(chat_id: int, user_id: int) -> bool:
     if chat_id == user_id:
         return True  # Anon Admin
 
-    user_status = user["status"]["@type"]
-    return is_cached and user_status in [
-        "chatMemberStatusCreator",
-        "chatMemberStatusAdministrator",
-    ]
+    return is_cached and isinstance(
+        user.status,
+        (types.ChatMemberStatusCreator, types.ChatMemberStatusAdministrator),
+    )
 
 
 @Client.on_updateNewCallbackQuery(filters=Filter.regex("^anon."))
@@ -242,9 +247,21 @@ async def verify_anonymous_admin(
     Returns:
         None
     """
-    data = callback.payload.data.decode()
+    payload = callback.payload
+    if not isinstance(payload, types.CallbackQueryPayloadData) or not payload.data:
+        return
+    if (
+        callback.chat_id is None
+        or callback.sender_user_id is None
+        or callback.message_id is None
+    ):
+        return
+    data = payload.data.decode(errors="ignore")
     chat_id = callback.chat_id
-    callback_id = int(f"{chat_id}{data.split('.')[1]}")
+    suffix = data.removeprefix("anon.")
+    if not suffix.isdigit():
+        return
+    callback_id = int(f"{chat_id}{suffix}")
     if callback_id not in ANON:
         await callback.edit_message_text("Button has expired")
         return
@@ -254,8 +271,10 @@ async def verify_anonymous_admin(
         await callback.answer("Failed to retrieve message", show_alert=True)
         return
 
+    if message.chat_id is None:
+        return
     if not await check_permissions(
-        message.chat.id, callback.sender_user_id, permissions
+        message.chat_id, callback.sender_user_id, permissions
     ):
         await callback.answer(
             f"You lack required permissions: {', '.join(ensure_permissions_list(permissions))}",
@@ -263,8 +282,8 @@ async def verify_anonymous_admin(
         )
         return
 
-    await c.deleteMessages(chat_id=message.chat.id, message_ids=[callback.message_id])
-    await func(c, message)
+    await c.deleteMessages(chat_id=message.chat_id, message_ids=[callback.message_id])
+    await func(c, message, _verified_user_id=callback.sender_user_id)
 
 
 def admins_only(
@@ -277,7 +296,7 @@ def admins_only(
     only_dev: bool = False,
     allow_pm: bool = True,
     no_reply: bool = False,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[Handler], Handler]:
     """A decorator to restrict command access to administrators.
 
     This decorator provides a flexible way to protect handlers by checking
@@ -308,14 +327,15 @@ def admins_only(
         Callable: The decorated function.
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Handler) -> Handler:
         @wraps(func)
         async def wrapper(
             c: Client,
-            message: Union[types.UpdateNewCallbackQuery, types.Message],
-            *args,
-            **kwargs,
-        ) -> Optional[Any]:
+            message: types.UpdateNewCallbackQuery | types.Message,
+            *args: Any,
+            _verified_user_id: int | None = None,
+            **kwargs: Any,
+        ) -> Any | None:
             if message is None:
                 c.logger.warning("msg is none")
                 return None
@@ -334,20 +354,33 @@ def admins_only(
                 )
 
             chat_id = message.chat_id
+            if _verified_user_id is not None:
+                user_id = _verified_user_id
+                is_anonymous = False
+            if chat_id is None or user_id is None or msg_id is None:
+                return None
 
             if only_dev and user_id != config.OWNER_ID:
                 if no_reply:
                     return None
                 return await sender("Only developers can use this command.")
 
-            if not allow_pm and chat_id < 0:
+            if not allow_pm and chat_id > 0:
                 if no_reply:
                     return None
                 return await sender("This command can only be used in groups.")
 
+            needs_admin = is_bot or is_auth or is_user or is_both or only_owner
+            if not needs_admin:
+                return await func(c, message, *args, **kwargs)
+            if chat_id > 0:
+                if not no_reply:
+                    await sender("This command can only be used in groups.")
+                return None
+
             # Handle anonymous admins
-            if is_anonymous and not no_reply:
-                ANON[int(f"{chat_id}{msg_id}")] = (message, func, permissions)
+            if is_anonymous and isinstance(message, types.Message) and not no_reply:
+                ANON[int(f"{chat_id}{msg_id}")] = (message, wrapper, permissions)
                 _type = types.InlineKeyboardButtonTypeCallback(
                     data=f"anon.{msg_id}".encode()
                 )
@@ -374,7 +407,7 @@ def admins_only(
 
             async def check_and_notify(
                 subject_id: int, subject_name: str
-            ) -> Optional[bool]:
+            ) -> bool | None:
                 if not await is_admin(chat_id, subject_id):
                     if no_reply:
                         return None
@@ -390,7 +423,7 @@ def admins_only(
                     return False
                 return True
 
-            if is_bot and not await check_and_notify(c.me.id, "I"):
+            if is_bot and not await check_and_notify(c.me.id or 0, "I"):
                 return None
 
             if is_user and not await check_and_notify(user_id, "You"):
@@ -410,12 +443,12 @@ def admins_only(
 
             if is_both and (
                 not await check_and_notify(user_id, "You")
-                or not await check_and_notify(c.me.id, "I")
+                or not await check_and_notify(c.me.id or 0, "I")
             ):
                 return None
 
             return await func(c, message, *args, **kwargs)
 
-        return wrapper
+        return cast(Handler, wrapper)
 
     return decorator

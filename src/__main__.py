@@ -1,6 +1,5 @@
-#  Copyright (c) 2025 AshokShau
-#  Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
-#  Part of the TgMusicBot project. All rights reserved where applicable.
+# Copyright (c) 2025 AshokShau
+# Licensed under the GNU AGPL v3.0: https://www.gnu.org/licenses/agpl-3.0.html
 
 import asyncio
 import signal
@@ -8,75 +7,40 @@ import signal
 from src import client
 
 
-_shutdown_started = False
-
-
-def handle_shutdown():
-    """Initiates the graceful shutdown process.
-
-    This function is designed to be used as a signal handler. It schedules
-    the main `shutdown` coroutine to be run on the event loop.
-    """
-    global _shutdown_started
-
-    if _shutdown_started:
-        return
-
-    _shutdown_started = True
-    client.logger.info("Shutting down...")
-
-    if client.loop and not client.loop.is_closed():
-        client.loop.create_task(shutdown())
-
-
-async def shutdown():
-    """Performs a graceful shutdown of the bot and its components.
-
-    This coroutine stops the main bot client, cancels all other running
-    asyncio tasks, and then stops the event loop itself.
-    """
-    if client.is_running:
+async def run_bot() -> None:
+    """Run startup and idle on one loop, cleaning up even after partial startup."""
+    loop = asyncio.get_running_loop()
+    task = asyncio.current_task()
+    assert task is not None
+    registered: list[signal.Signals] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, task.cancel)
+            registered.append(sig)
+        except NotImplementedError:
+            # asyncio.run handles Ctrl-C on platforms without loop signal handlers.
+            pass
+    try:
+        await client.initialize_components()
+        await client.idle()
+    except asyncio.CancelledError:
+        client.logger.info("Shutting down...")
+    finally:
+        for sig in registered:
+            loop.remove_signal_handler(sig)
         await client.stop_task()
-
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    if client.loop and client.loop.is_running():
-        client.loop.stop()
 
 
 def main() -> None:
-    """The main entry point for starting the bot.
-
-    This function sets up signal handlers for graceful termination (SIGINT, SIGTERM),
-    then starts the bot's main event loop and initialization process. It includes
-    exception handling to log fatal errors and ensures a clean shutdown.
-    """
+    """Start the bot and let asyncio close its event loop after cleanup."""
     client.logger.info("Starting TgMusicBot...")
-
-    if client.loop is None or client.loop.is_closed():
-        client.loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(client.loop)
-
     try:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            client.loop.add_signal_handler(sig, handle_shutdown)
-    except (NotImplementedError, RuntimeError) as e:
-        client.logger.warning(f"Could not set up signal handler: {e}")
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, lambda s, f: handle_shutdown())
-
-    try:
-        client.loop.run_until_complete(client.initialize_components())
-        client.loop.run_until_complete(client.run())
-    except Exception as e:
-        client.logger.critical(f"Fatal error: {e}", exc_info=True)
-    finally:
-        if not client.loop.is_closed():
-            client.loop.run_until_complete(shutdown())
-        client.loop.close()
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        client.logger.critical("Fatal error", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":

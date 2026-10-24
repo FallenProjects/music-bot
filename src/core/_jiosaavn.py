@@ -4,18 +4,20 @@
 
 import asyncio
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import yt_dlp
 from pytdbot import types
+from yt_dlp.utils import DownloadError
 
 from src.logger import LOGGER
 
 from ._config import config
 from ._dataclass import MusicTrack, PlatformTracks, TrackInfo
 from ._downloader import MusicService
-from ._httpx import HttpxClient
+from ._httpx import http_client, redirect_client
 
 
 class JiosaavnData(MusicService):
@@ -57,7 +59,7 @@ class JiosaavnData(MusicService):
     # Default values for missing metadata
     DEFAULT_DURATION = 0  # seconds
 
-    def __init__(self, query: Optional[str] = None) -> None:
+    def __init__(self, query: str | None = None) -> None:
         """Initializes the JiosaavnData handler.
 
         Args:
@@ -65,12 +67,6 @@ class JiosaavnData(MusicService):
                 Defaults to None.
         """
         self.query = query
-        self._ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": "in_playlist",
-            "socket_timeout": 10,
-        }
 
     def is_valid(self) -> bool:
         """Validates if the query is a recognizable JioSaavn URL.
@@ -86,7 +82,7 @@ class JiosaavnData(MusicService):
             or self.JIOSAAVN_PLAYLIST_PATTERN.match(self.query)
         )
 
-    async def search(self) -> Union[PlatformTracks, types.Error]:
+    async def search(self) -> PlatformTracks | types.Error:
         """Searches JioSaavn for tracks.
 
         If the query is a valid JioSaavn URL, it retrieves the info directly.
@@ -104,7 +100,7 @@ class JiosaavnData(MusicService):
             return await self.get_info()
 
         try:
-            response = await HttpxClient().make_request(
+            response = await http_client.make_request(
                 self.API_SEARCH_ENDPOINT.format(query=self.query)
             )
 
@@ -125,9 +121,9 @@ class JiosaavnData(MusicService):
 
         except Exception as error:
             LOGGER.error(f"JioSaavn search failed for '{self.query}': {error}")
-            return types.Error(code=500, message=f"Search failed: {str(error)}")
+            return types.Error(code=500, message=f"Search failed: {error!s}")
 
-    async def get_info(self) -> Union[PlatformTracks, types.Error]:
+    async def get_info(self) -> PlatformTracks | types.Error:
         """Retrieves track or playlist information from a JioSaavn URL.
 
         This method determines whether the URL is for a single song or a
@@ -157,7 +153,7 @@ class JiosaavnData(MusicService):
             LOGGER.error(f"Failed to get info for {self.query}: {error}")
             return types.Error(code=500, message="Failed to retrieve track information")
 
-    async def get_track(self) -> Union[TrackInfo, types.Error]:
+    async def get_track(self) -> TrackInfo | types.Error:
         """Gets detailed information for a single JioSaavn track.
 
         This includes metadata required for playback, such as the download URL.
@@ -183,7 +179,18 @@ class JiosaavnData(MusicService):
             key="",
         )
 
-    async def get_track_data(self, url: str) -> Optional[dict[str, Any]]:
+    @staticmethod
+    def _new_downloader() -> yt_dlp.YoutubeDL:
+        return yt_dlp.YoutubeDL(
+            {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "socket_timeout": 10,
+            }
+        )
+
+    async def get_track_data(self, url: str) -> dict[str, Any] | None:
         """Retrieves metadata for a single JioSaavn track using yt-dlp.
 
         Args:
@@ -194,16 +201,16 @@ class JiosaavnData(MusicService):
                 track metadata, or None if the operation fails.
         """
         try:
-            with yt_dlp.YoutubeDL(self._ydl_opts) as ydl:
+            with self._new_downloader() as ydl:
                 info = await asyncio.to_thread(ydl.extract_info, url, download=False)
                 return {"results": [self._format_track(info)]} if info else None
-        except yt_dlp.DownloadError as error:
+        except DownloadError as error:
             LOGGER.error(f"Download error for track {url}: {error}")
         except Exception as error:
             LOGGER.error(f"Unexpected error processing track {url}: {error}")
         return None
 
-    async def get_playlist_data(self, url: str) -> Optional[dict[str, Any]]:
+    async def get_playlist_data(self, url: str) -> dict[str, Any] | None:
         """Retrieves metadata for a JioSaavn playlist using yt-dlp.
 
         Args:
@@ -214,19 +221,18 @@ class JiosaavnData(MusicService):
                 parsed tracks from the playlist, or None if the operation fails.
         """
         try:
-            with yt_dlp.YoutubeDL(self._ydl_opts) as ydl:
+            with self._new_downloader() as ydl:
                 info = await asyncio.to_thread(ydl.extract_info, url, download=False)
 
-                if not info or not info.get("entries"):
+                entries = info.get("entries") if info else None
+                if not entries:
                     LOGGER.warning(f"Empty playlist response for {url}")
                     return None
 
                 return {
-                    "results": [
-                        self._format_track(track) for track in info["entries"] if track
-                    ]
+                    "results": [self._format_track(track) for track in entries if track]
                 }
-        except yt_dlp.DownloadError as error:
+        except DownloadError as error:
             LOGGER.error(f"Download error for playlist {url}: {error}")
         except Exception as error:
             LOGGER.error(f"Unexpected error processing playlist {url}: {error}")
@@ -234,7 +240,7 @@ class JiosaavnData(MusicService):
 
     async def download_track(
         self, track: TrackInfo, video: bool = False
-    ) -> Union[Path, types.Error]:
+    ) -> Path | types.Error:
         """Downloads an audio track from JioSaavn.
 
         Note: The `video` parameter is ignored as JioSaavn is an audio-only service.
@@ -250,15 +256,13 @@ class JiosaavnData(MusicService):
         """
         if not track or not track.cdnurl:
             return types.Error(
-                code=400, message=f"No download URL available for track: {track.tc}"
+                code=400, message=f"No download URL available for track: {track.id}"
             )
 
         download_path = config.DOWNLOADS_DIR / f"{track.id}.m4a"
-        result = await HttpxClient(max_redirects=1).download_file(
-            track.cdnurl, download_path
-        )
+        result = await redirect_client.download_file(track.cdnurl, download_path)
 
-        if not result.success:
+        if not result.success or result.file_path is None:
             error_msg = result.error or f"Download failed for track: {track.id}"
             LOGGER.error(error_msg)
             return types.Error(code=500, message=error_msg)
@@ -293,7 +297,7 @@ class JiosaavnData(MusicService):
             return ""
 
     @classmethod
-    def _format_track(cls, track_data: dict[str, Any]) -> dict[str, Any]:
+    def _format_track(cls, track_data: Mapping[str, Any]) -> dict[str, Any]:
         """Formats raw track data into a standardized dictionary structure.
 
         This method extracts and standardizes key information from the raw
@@ -325,7 +329,7 @@ class JiosaavnData(MusicService):
     @staticmethod
     def _create_platform_tracks(
         data: dict[str, Any],
-    ) -> Union[PlatformTracks, types.Error]:
+    ) -> PlatformTracks | types.Error:
         """Creates a PlatformTracks object from raw API data.
 
         This helper method validates and converts the results from a data

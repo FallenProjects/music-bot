@@ -25,7 +25,7 @@ class InactiveCallManager:
         bot (Client): The main pytdbot client instance.
     """
 
-    def __init__(self, bot: Client):
+    def __init__(self, bot: Client) -> None:
         """Initializes the InactiveCallManager.
 
         Args:
@@ -33,8 +33,8 @@ class InactiveCallManager:
         """
         self.bot = bot
         self._stop = asyncio.Event()
-        self._vc_task: asyncio.Task | None = None
-        self._leave_task: asyncio.Task | None = None
+        self._vc_task: asyncio.Task[None] | None = None
+        self._leave_task: asyncio.Task[None] | None = None
         self._sleep_time = 40
 
     async def _end_call_if_inactive(self, chat_id: int) -> bool:
@@ -54,7 +54,7 @@ class InactiveCallManager:
             self.bot.logger.warning(f"[VC Users Error] {chat_id}: {vc_users.message}")
             return False
 
-        if len(vc_users) > 1:
+        if vc_users is None or len(vc_users) > 1:
             return False
 
         played_time = await call.played_time(chat_id)
@@ -71,7 +71,7 @@ class InactiveCallManager:
         await call.end(chat_id)
         return True
 
-    async def _vc_loop(self):
+    async def _vc_loop(self) -> None:
         """The main loop for the voice chat auto-end feature.
 
         This loop runs continuously, checking all active voice chats at regular
@@ -83,7 +83,7 @@ class InactiveCallManager:
                     await asyncio.sleep(2)
                     continue
 
-                if not await db.get_auto_end(self.bot.me.id):
+                if not await db.get_auto_end(self.bot.me.id or 0):
                     await asyncio.sleep(self._sleep_time)
                     continue
 
@@ -101,7 +101,7 @@ class InactiveCallManager:
 
             await asyncio.sleep(self._sleep_time)
 
-    async def _leave_loop(self):
+    async def _leave_loop(self) -> None:
         """The main loop for the auto-leave feature.
 
         This loop is designed to run the `leave_all` method once every day
@@ -118,24 +118,21 @@ class InactiveCallManager:
                 self.bot.logger.info(
                     f"[AutoLeave] Waiting {wait:.2f} seconds for 3:00 AM"
                 )
-                await asyncio.wait(
-                    [asyncio.create_task(self._stop.wait())], timeout=wait
-                )
+                try:
+                    await asyncio.wait_for(self._stop.wait(), timeout=wait)
+                except TimeoutError:
+                    pass
 
                 if self._stop.is_set():
                     break
 
                 await self.leave_all()
 
-                # Fallback safety sleep (24h)
-                await asyncio.wait(
-                    [asyncio.create_task(self._stop.wait())], timeout=86400
-                )  # 24 hours
             except Exception as e:
                 self.bot.logger.exception(f"[AutoLeave] Error: {e}")
                 await asyncio.sleep(3600)  # Wait 1h before retry
 
-    async def _leave_chat(self, ub: PyroClient, chat_id: int):
+    async def _leave_chat(self, ub: PyroClient, chat_id: int) -> bool:
         """Makes a specific userbot (assistant) leave a chat.
 
         It includes handling for flood waits and other common RPC errors. It
@@ -155,7 +152,7 @@ class InactiveCallManager:
             self.bot.logger.debug(f"[{ub.name}] Left chat {chat_id}")
             return True
         except errors.FloodWait as e:
-            wait_time = e.value
+            wait_time = e.value if isinstance(e.value, int) else 0
             if wait_time <= 100:
                 self.bot.logger.warning(
                     f"[{ub.name}] FloodWait {wait_time}s for chat {chat_id}"
@@ -170,7 +167,7 @@ class InactiveCallManager:
             self.bot.logger.exception(f"[{ub.name}] Leave error on {chat_id}: {e}")
             return False
 
-    async def leave_all(self):
+    async def leave_all(self) -> None:
         """Orchestrates the process of all assistants leaving all chats.
 
         This function iterates through each assistant client, gets its list of
@@ -190,7 +187,7 @@ class InactiveCallManager:
                 try:
                     async for dialog in ub.get_dialogs():
                         chat = getattr(dialog, "chat", None)
-                        if chat and chat.id > 0:
+                        if chat is None or chat.id > 0:
                             continue  # skip users/private chats
                         chats_to_leave.append(chat.id)
                 except Exception as e:
@@ -212,7 +209,7 @@ class InactiveCallManager:
             duration = time.monotonic() - start_time
             self.bot.logger.info(f"[leave_all] Completed in {duration:.2f}s")
 
-    async def start(self):
+    async def start(self) -> None:
         """Starts the background job loops.
 
         This creates asyncio tasks for the VC auto-end loop and the auto-leave
@@ -227,14 +224,13 @@ class InactiveCallManager:
             self._leave_task = asyncio.create_task(self._leave_loop())
             self.bot.logger.info("Started auto-leave task")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stops all running background tasks gracefully."""
         self._stop.set()
 
-        if self._vc_task:
-            await self._vc_task
-
-        if self._leave_task:
-            await self._leave_task
+        tasks = [task for task in (self._vc_task, self._leave_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         self.bot.logger.info("All background loops stopped.")

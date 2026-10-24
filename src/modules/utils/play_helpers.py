@@ -10,9 +10,7 @@ from pytdbot import types
 from src.logger import LOGGER
 
 
-async def get_url(
-    msg: types.Message, reply: Union[types.Message, None]
-) -> Union[str, None]:
+async def get_url(msg: types.Message, reply: types.Message | None) -> str | None:
     """Extracts a URL from a message's text or entities.
 
     This function checks the message entities first. If a URL entity is
@@ -34,14 +32,17 @@ async def get_url(
         entities = msg.entities or []
 
     for entity in entities:
-        if entity.type and entity.type["@type"] == "textEntityTypeUrl":
-            offset = entity.offset
-            length = entity.length
-            return text_content[offset : offset + length]
+        if isinstance(entity.type, types.TextEntityTypeTextUrl):
+            return entity.type.url
+        if isinstance(entity.type, types.TextEntityTypeUrl):
+            offset = entity.offset or 0
+            length = entity.length or 0
+            encoded = text_content.encode("utf-16-le")
+            return encoded[offset * 2 : (offset + length) * 2].decode("utf-16-le")
     return None
 
 
-def extract_argument(text: str, enforce_digit: bool = False) -> Union[str, None]:
+def extract_argument(text: str, enforce_digit: bool = False) -> str | None:
     """Extracts the argument part of a command string.
 
     For example, in "/command arg1 arg2", it would return "arg1 arg2".
@@ -106,8 +107,8 @@ async def edit_text(
     if isinstance(reply, types.Error):
         if reply.code == 429:
             retry_after = (
-                int(reply.message.split("retry after ")[1])
-                if "retry after" in reply.message
+                int((reply.message or "").split("retry after ")[1])
+                if "retry after" in (reply.message or "")
                 else 2
             )
             LOGGER.warning("Rate limited, retrying in %s seconds", retry_after)

@@ -17,7 +17,7 @@ from src.modules.utils import sec_to_min
 
 
 @Client.on_message(filters=Filter.command("privacy"))
-async def privacy_handler(c: Client, message: types.Message):
+async def privacy_handler(c: Client, message: types.Message) -> None:
     """Handles the /privacy command to display the bot's privacy policy.
 
     Args:
@@ -71,10 +71,9 @@ If you have any questions or concerns about our privacy policy, feel free to con
     reply = await message.reply_text(text)
     if isinstance(reply, types.Error):
         c.logger.warning(f"Error sending privacy policy message:{reply.message}")
-    return
 
 
-rate_limit_cache = TTLCache(maxsize=100, ttl=180)
+rate_limit_cache = TTLCache[int, datetime](maxsize=100, ttl=180)
 
 
 @Client.on_message(filters=Filter.command(["reload"]))
@@ -91,13 +90,15 @@ async def reload_cmd(c: Client, message: types.Message) -> None:
     """
     user_id = message.from_id
     chat_id = message.chat_id
+    if chat_id is None:
+        return
     if chat_id > 0:
         reply = await message.reply_text(
             "🚫 This command can only be used in SuperGroups only."
         )
         if isinstance(reply, types.Error):
             c.logger.warning(f"Error sending message: {reply} for chat {chat_id}")
-        return None
+        return
 
     if user_id in rate_limit_cache:
         last_used_time = rate_limit_cache[user_id]
@@ -107,20 +108,21 @@ async def reload_cmd(c: Client, message: types.Message) -> None:
         )
         if isinstance(reply, types.Error):
             c.logger.warning(f"Error sending message: {reply} for chat {chat_id}")
-        return None
+        return
 
     rate_limit_cache[user_id] = datetime.now()
     reply = await message.reply_text("🔄 Reloading...")
     if isinstance(reply, types.Error):
         c.logger.warning(f"Error sending message: {reply} for chat {chat_id}")
-        return None
+        return
 
     ub = await call.get_client(chat_id)
     if isinstance(ub, types.Error):
         await reply.edit_text(ub.message)
-        return None
+        return
 
     chat_invite_cache.pop(chat_id, None)
+    assert ub.me is not None
     user_key = f"{chat_id}:{ub.me.id}"
     user_status_cache.pop(user_key, None)
 
@@ -129,12 +131,17 @@ async def reload_cmd(c: Client, message: types.Message) -> None:
 
     load_admins, _ = await load_admin_cache(c, chat_id, True)
     ub_stats = await call.check_user_status(chat_id)
-    if isinstance(ub_stats, types.Error):
-        ub_stats = ub_stats.message
+    assistant_status = (
+        ub_stats.message
+        if isinstance(ub_stats, types.Error)
+        else ub_stats.getType()
+        if ub_stats is not None
+        else "Unavailable"
+    )
 
     loaded = "✅" if load_admins else "❌"
     text = (
-        f"<b>Assistant Status:</b> {ub_stats.getType()}\n"
+        f"<b>Assistant Status:</b> {assistant_status}\n"
         f"<b>Admins Loaded:</b> {loaded}\n"
         f"<b>» Reloaded by:</b> {await message.mention()}"
     )
@@ -142,7 +149,7 @@ async def reload_cmd(c: Client, message: types.Message) -> None:
     reply = await reply.edit_text(text)
     if isinstance(reply, types.Error):
         c.logger.warning(f"Error sending message: {reply} for chat {chat_id}")
-    return None
+    return
 
 
 @Client.on_message(filters=Filter.command("ping"))
@@ -157,20 +164,22 @@ async def ping_cmd(client: Client, message: types.Message) -> None:
         message (types.Message): The message object containing the command.
     """
 
-    response = await call.stats_call(message.chat_id if message.chat_id < 0 else 1)
+    response = await call.stats_call(
+        message.chat_id if message.chat_id is not None and message.chat_id < 0 else 1
+    )
     if isinstance(response, types.Error):
-        call_ping = response.message
-        cpu_usage = "Unavailable"
+        call_ping_info = response.message or "Unavailable"
+        cpu_info = "Unavailable"
     else:
         call_ping, cpu_usage = response
-    call_ping_info = f"{call_ping:.2f} ms"
-    cpu_info = f"{cpu_usage:.2f}%"
+        call_ping_info = f"{call_ping:.2f} ms"
+        cpu_info = f"{cpu_usage:.2f}%"
     uptime = datetime.now() - StartTime
     uptime_str = str(uptime).split(".")[0]
     start_time = time.monotonic()
     reply_msg = await message.reply_text("🏓 Pinging...")
     if isinstance(reply_msg, types.Error):
-        return None
+        return
 
     latency = (time.monotonic() - start_time) * 1000  # ms
     response = (
@@ -183,4 +192,4 @@ async def ping_cmd(client: Client, message: types.Message) -> None:
     done = await reply_msg.edit_text(response, disable_web_page_preview=True)
     if isinstance(done, types.Error):
         client.logger.warning(f"Error sending message: {done}")
-    return None
+    return

@@ -5,3 +5,4 @@ __pycache__/
 /src/cookies
 /*.egg-info
 *.log
+tests

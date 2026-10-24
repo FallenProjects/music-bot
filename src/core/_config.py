@@ -6,9 +6,8 @@
 #  Configure environment variables using a `.env` file instead.
 
 import os
-import shutil
 from pathlib import Path
-from typing import Optional
+from typing import overload
 
 from dotenv import load_dotenv
 
@@ -52,25 +51,25 @@ class BotConfig:
         DEVS (list[int]): A list of developer user IDs.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes the BotConfig class by loading and validating settings."""
         # Core Bot Configuration
-        self.API_ID: Optional[int] = self._get_env_int("API_ID")
-        self.API_HASH: Optional[str] = os.getenv("API_HASH")
-        self.TOKEN: Optional[str] = os.getenv("TOKEN")
+        self.API_ID: int | None = self._get_env_int("API_ID")
+        self.API_HASH: str | None = os.getenv("API_HASH")
+        self.TOKEN: str | None = os.getenv("TOKEN")
 
         self.SESSION_STRINGS: list[str] = self._get_session_strings()
-        self.MONGO_URI: Optional[str] = os.getenv("MONGO_URI")
+        self.MONGO_URI: str | None = os.getenv("MONGO_URI")
         self.DB_NAME: str = os.getenv("DB_NAME", "MusicBot")
         self.API_URL: str = os.getenv("API_URL", "https://api.fallenapi.fun")
-        self.API_KEY: Optional[str] = os.getenv("API_KEY")
+        self.API_KEY: str | None = os.getenv("API_KEY")
 
         # Owner and Logger
         self.OWNER_ID: int = self._get_env_int("OWNER_ID", 5938660179)
         self.LOGGER_ID: int = self._get_env_int("LOGGER_ID", -1002166934878)
 
         # Optional Settings
-        self.PROXY: Optional[str] = os.getenv("PROXY")
+        self.PROXY: str | None = os.getenv("PROXY")
         self.DEFAULT_SERVICE: str = os.getenv("DEFAULT_SERVICE", "youtube").lower()
         self.MIN_MEMBER_COUNT: int = self._get_env_int("MIN_MEMBER_COUNT", 50)
         self.MAX_FILE_SIZE: int = self._get_env_int(
@@ -103,7 +102,7 @@ class BotConfig:
         )
 
         # Developer
-        devs_env: Optional[str] = os.getenv("DEVS")
+        devs_env: str | None = os.getenv("DEVS")
         self.DEVS: list[int] = list(map(int, devs_env.split())) if devs_env else []
         if self.OWNER_ID and self.OWNER_ID not in self.DEVS:
             self.DEVS.append(self.OWNER_ID)
@@ -112,7 +111,15 @@ class BotConfig:
         self._validate_config()
 
     @staticmethod
-    def _get_env_int(name: str, default: Optional[int] = None) -> Optional[int]:
+    @overload
+    def _get_env_int(name: str, default: int) -> int: ...
+
+    @staticmethod
+    @overload
+    def _get_env_int(name: str, default: None = None) -> int | None: ...
+
+    @staticmethod
+    def _get_env_int(name: str, default: int | None = None) -> int | None:
         """Retrieves and converts an environment variable to an integer.
 
         If the environment variable is not set or cannot be converted to an
@@ -128,7 +135,7 @@ class BotConfig:
         """
         value = os.getenv(name)
         try:
-            return int(value)
+            return int(value) if value is not None else default
         except (TypeError, ValueError):
             LOGGER.warning(
                 "Invalid value for %s: %s (default: %s)", name, value, default
@@ -172,7 +179,7 @@ class BotConfig:
         ]
 
     @staticmethod
-    def _process_cookie_urls(value: Optional[str]) -> list[str]:
+    def _process_cookie_urls(value: str | None) -> list[str]:
         """Parses a string of URLs into a list.
 
         The input string can contain URLs separated by spaces or commas.
@@ -215,11 +222,6 @@ class BotConfig:
 
         if not self.SESSION_STRINGS:
             raise ValueError("At least one session string (STRING1–10) is required")
-
-        if self.IGNORE_BACKGROUND_UPDATES:
-            db_path = Path("database")
-            if db_path.exists():
-                shutil.rmtree(db_path)
 
         try:
             self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)

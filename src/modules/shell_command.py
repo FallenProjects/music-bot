@@ -34,12 +34,16 @@ async def run_shell_command(cmd: str, timeout: int = 60) -> tuple[str, str, int]
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         await process.wait()
         return "", f"Command timed out after {timeout} seconds", -1
 
-    return stdout.decode().strip(), stderr.decode().strip(), process.returncode
+    return (
+        stdout.decode().strip(),
+        stderr.decode().strip(),
+        process.returncode if process.returncode is not None else -1,
+    )
 
 
 async def shellrunner(message: types.Message) -> types.Ok | types.Error | types.Message:
@@ -126,7 +130,7 @@ async def shellrunner(message: types.Message) -> types.Ok | types.Error | types.
         return types.Ok()
     except Exception as e:
         return await message.reply_text(
-            f"⚠️ <b>Error:</b>\n<pre>{str(e)}</pre>", parse_mode="html"
+            f"⚠️ <b>Error:</b>\n<pre>{e!s}</pre>", parse_mode="html"
         )
 
 
@@ -145,5 +149,5 @@ async def shell_command(_: Client, m: types.Message) -> None:
     done = await shellrunner(m)
     if isinstance(done, types.Error):
         LOGGER.warning(done.message)
-        return None
-    return None
+        return
+    return

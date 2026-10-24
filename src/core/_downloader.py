@@ -4,7 +4,6 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Union
 
 from pytdbot import types
 
@@ -27,28 +26,28 @@ class MusicService(ABC):
         ...
 
     @abstractmethod
-    async def get_info(self) -> Union[PlatformTracks, types.Error]:
+    async def get_info(self) -> PlatformTracks | types.Error:
         """Retrieves information for a playlist, album, or track from a URL."""
         ...
 
     @abstractmethod
-    async def search(self) -> Union[PlatformTracks, types.Error]:
+    async def search(self) -> PlatformTracks | types.Error:
         """Searches for tracks using a query string."""
         ...
 
     @abstractmethod
-    async def get_track(self) -> Union[TrackInfo, types.Error]:
+    async def get_track(self) -> TrackInfo | types.Error:
         """Gets detailed information for a single track."""
         ...
 
     @abstractmethod
     async def download_track(
-        self, track_info: TrackInfo, video: bool = False
-    ) -> Union[Path, types.Error]:
+        self, track: TrackInfo, video: bool = False
+    ) -> Path | types.Error:
         """Downloads a track to local storage.
 
         Args:
-            track_info (TrackInfo): The track's metadata.
+            track (TrackInfo): The track's metadata.
             video (bool): Flag to download video instead of audio. Defaults to False.
 
         Returns:
@@ -71,7 +70,7 @@ class DownloaderWrapper(MusicService):
         service (MusicService): The music service instance chosen to handle the query.
     """
 
-    def __init__(self, query: Optional[str] = None) -> None:
+    def __init__(self, query: str | None = None) -> None:
         """Initializes the DownloaderWrapper.
 
         Args:
@@ -95,10 +94,10 @@ class DownloaderWrapper(MusicService):
         from ._youtube import YouTubeData
 
         services = [YouTubeData, JiosaavnData, ApiData]
-        if service := next(
-            (s(self.query) for s in services if s(self.query).is_valid()), None
-        ):
-            return service
+        for service_type in services:
+            service = service_type(self.query)
+            if service.is_valid():
+                return service
 
         fallback = {
             "youtube": YouTubeData,
@@ -106,11 +105,9 @@ class DownloaderWrapper(MusicService):
             "jiosaavn": JiosaavnData,
         }.get(config.DEFAULT_SERVICE, YouTubeData)
 
-        return (
-            ApiData(self.query)
-            if fallback == ApiData and config.API_URL and config.API_KEY
-            else fallback(self.query)
-        )
+        if fallback is ApiData and not (config.API_URL and config.API_KEY):
+            fallback = YouTubeData
+        return fallback(self.query)
 
     def is_valid(self) -> bool:
         """Delegates the validity check to the selected service.
@@ -120,7 +117,7 @@ class DownloaderWrapper(MusicService):
         """
         return self.service.is_valid()
 
-    async def get_info(self) -> Union[PlatformTracks, types.Error]:
+    async def get_info(self) -> PlatformTracks | types.Error:
         """Delegates the get_info call to the selected service.
 
         Returns:
@@ -128,7 +125,7 @@ class DownloaderWrapper(MusicService):
         """
         return await self.service.get_info()
 
-    async def search(self) -> Union[PlatformTracks, types.Error]:
+    async def search(self) -> PlatformTracks | types.Error:
         """Delegates the search call to the selected service.
 
         Returns:
@@ -136,7 +133,7 @@ class DownloaderWrapper(MusicService):
         """
         return await self.service.search()
 
-    async def get_track(self) -> Union[TrackInfo, types.Error]:
+    async def get_track(self) -> TrackInfo | types.Error:
         """Delegates the get_track call to the selected service.
 
         Returns:
@@ -145,15 +142,15 @@ class DownloaderWrapper(MusicService):
         return await self.service.get_track()
 
     async def download_track(
-        self, track_info: TrackInfo, video: bool = False
-    ) -> Union[Path, types.Error]:
+        self, track: TrackInfo, video: bool = False
+    ) -> Path | types.Error:
         """Delegates the download_track call to the selected service.
 
         Args:
-            track_info (TrackInfo): The track's metadata.
+            track (TrackInfo): The track's metadata.
             video (bool): Flag to download video instead of audio. Defaults to False.
 
         Returns:
             Union[Path, types.Error]: The path to the downloaded file or an Error.
         """
-        return await self.service.download_track(track_info, video)
+        return await self.service.download_track(track, video)

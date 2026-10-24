@@ -3,17 +3,18 @@
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
 __all__ = [
-    "sec_to_min",
     "get_audio_duration",
+    "sec_to_min",
 ]
 
 import asyncio
 import json
+from pathlib import Path
 
 from ...logger import LOGGER
 
 
-def sec_to_min(seconds):
+def sec_to_min(seconds: int | float) -> str | None:
     """Converts a duration in seconds to a 'minutes:seconds' string format.
 
     Args:
@@ -32,7 +33,7 @@ def sec_to_min(seconds):
         return None
 
 
-async def get_audio_duration(file_path):
+async def get_audio_duration(file_path: str | Path) -> int:
     """Gets the duration of an audio or video file using ffprobe.
 
     This function executes the `ffprobe` command-line tool to read the

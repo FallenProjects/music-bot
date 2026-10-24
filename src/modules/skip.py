@@ -22,10 +22,12 @@ async def skip_song(_: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if not chat_cache.is_active(chat_id):
         await msg.reply_text("⏸ No active playback session")
-        return None
+        return
 
     await del_msg(msg)
-    await call.play_next(chat_id)
-    return None
+    await call.play_next(chat_id, force=True)
+    return

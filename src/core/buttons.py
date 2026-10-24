@@ -62,7 +62,8 @@ GROUP_BTN = types.InlineKeyboardButton(
 )
 
 HELP_BTN = types.InlineKeyboardButton(
-    text="Hᴇʟᴘ & Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_all")
+    text="Hᴇʟᴘ & Cᴏᴍᴍᴀɴᴅꜱ",
+    type=types.InlineKeyboardButtonTypeCallback(data=b"help_all"),
 )
 
 USER_BTN = types.InlineKeyboardButton(
@@ -70,11 +71,13 @@ USER_BTN = types.InlineKeyboardButton(
 )
 
 ADMIN_BTN = types.InlineKeyboardButton(
-    text="Aᴅᴍɪɴ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_admin")
+    text="Aᴅᴍɪɴ Cᴏᴍᴍᴀɴᴅꜱ",
+    type=types.InlineKeyboardButtonTypeCallback(data=b"help_admin"),
 )
 
 OWNER_BTN = types.InlineKeyboardButton(
-    text="Oᴡɴᴇʀ Cᴏᴍᴍᴀɴᴅꜱ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_owner")
+    text="Oᴡɴᴇʀ Cᴏᴍᴍᴀɴᴅꜱ",
+    type=types.InlineKeyboardButtonTypeCallback(data=b"help_owner"),
 )
 
 DEVS_BTN = types.InlineKeyboardButton(
@@ -85,7 +88,9 @@ HOME_BTN = types.InlineKeyboardButton(
     text="Hᴏᴍᴇ", type=types.InlineKeyboardButtonTypeCallback(data=b"help_back")
 )
 
-SupportButton = types.ReplyMarkupInlineKeyboard(rows=[[CHANNEL_BTN, GROUP_BTN], [CLOSE_BTN]])
+SupportButton = types.ReplyMarkupInlineKeyboard(
+    rows=[[CHANNEL_BTN, GROUP_BTN], [CLOSE_BTN]]
+)
 
 HelpMenu = types.ReplyMarkupInlineKeyboard(
     rows=[

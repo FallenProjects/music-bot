@@ -7,10 +7,12 @@ import asyncio
 from datetime import datetime
 
 from pytdbot import Client, types
+
 from src.core import call, config, db, tg
 
 __version__ = "1.2.4"
 StartTime = datetime.now()
+
 
 class Bot(Client):
     """The main bot class, inheriting from `pytdbot.Client`.
@@ -57,22 +59,25 @@ class Bot(Client):
         self.call_manager = InactiveCallManager(self)
         self._start_time = StartTime
         self._version = __version__
+        self._services_stopped = False
 
     async def start_clients(self) -> None:
         """Starts all assistant (Pyrogram) client sessions concurrently.
 
         Raises:
-            SystemExit: If any of the clients fail to start.
+            RuntimeError: If any of the clients fail to start.
         """
+        assert config.API_ID is not None and config.API_HASH is not None
         try:
-            await asyncio.gather(
-                *[
-                    self.call.start_client(config.API_ID, config.API_HASH, session_str)
-                    for session_str in config.SESSION_STRINGS
-                ]
-            )
+            async with asyncio.TaskGroup() as tasks:
+                for session_str in config.SESSION_STRINGS:
+                    tasks.create_task(
+                        self.call.start_client(
+                            config.API_ID, config.API_HASH, session_str
+                        )
+                    )
         except Exception as exc:
-            raise SystemExit(1) from exc
+            raise RuntimeError("Failed to start assistant clients") from exc
 
     async def initialize_components(self) -> None:
         """Initializes all bot components in the correct order.
@@ -100,17 +105,33 @@ class Bot(Client):
         This ensures that database connections, client sessions, and background
         tasks are all stopped cleanly.
         """
+        if self._services_stopped:
+            return
+        self._services_stopped = True
+        from py_yt.core.session import close_session
+
+        from src.core._httpx import close_http_clients
+
         self.logger.info("Stopping bot...")
+        # Stop request producers before closing the pools they use.
+        for stop in (self.call_manager.stop, self.call.stop_all_clients):
+            try:
+                await stop()
+            except Exception:
+                self.logger.exception("Error stopping bot component")
         try:
-            shutdown_tasks = [
+            if self.is_running:
+                await self.stop()
+        finally:
+            results = await asyncio.gather(
+                close_http_clients(),
+                close_session(),
                 self.db.close(),
-                self.call_manager.stop(),
-                self.call.stop_all_clients(),
-            ]
-            await asyncio.gather(*shutdown_tasks)
-        except Exception as e:
-            self.logger.error(f"Error during shutdown: {e}", exc_info=True)
-            raise
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    self.logger.error("Error closing bot resource: %s", result)
 
     def _get_uptime(self) -> float:
         """Calculates the bot's current uptime.

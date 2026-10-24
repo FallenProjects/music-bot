@@ -6,7 +6,6 @@ import asyncio
 import os
 import subprocess
 from pathlib import Path
-from typing import Union
 
 import aiofiles
 from Crypto.Cipher import AES
@@ -17,7 +16,7 @@ from src.logger import LOGGER
 
 from ._config import config
 from ._dataclass import TrackInfo
-from ._httpx import HttpxClient
+from ._httpx import http_client
 
 
 async def rebuild_ogg(filename: str) -> None:
@@ -83,7 +82,7 @@ class SpotifyDownload:
         output_file (str): The path for the final, playable OGG audio file.
     """
 
-    def __init__(self, track: TrackInfo):
+    def __init__(self, track: TrackInfo) -> None:
         """Initializes the SpotifyDownload helper.
 
         Args:
@@ -111,6 +110,8 @@ class SpotifyDownload:
             Exception: If any error occurs during the decryption process.
         """
         try:
+            if self.track.key is None:
+                raise ValueError("Missing Spotify decryption key")
             key = bytes.fromhex(self.track.key)
             iv = bytes.fromhex("72e067fbddcbcf77ebe8bc643f630d93")
             iv_int = int.from_bytes(iv, "big")
@@ -155,7 +156,7 @@ class SpotifyDownload:
             _, stderr = await process.communicate()
             if process.returncode != 0:
                 LOGGER.error("ffmpeg error: %s", stderr.decode().strip())
-                raise subprocess.CalledProcessError(process.returncode, "ffmpeg")
+                raise subprocess.CalledProcessError(process.returncode or 1, "ffmpeg")
         except Exception as e:
             LOGGER.error("Error fixing audio file: %s", e)
             raise
@@ -169,7 +170,7 @@ class SpotifyDownload:
             except Exception as e:
                 LOGGER.warning("Error removing %s: %s", file, e)
 
-    async def process(self) -> Union[Path, types.Error]:
+    async def process(self) -> Path | types.Error:
         """The main processing pipeline for a Spotify track.
 
         This function orchestrates the entire process:
@@ -198,7 +199,13 @@ class SpotifyDownload:
             )
 
         try:
-            await HttpxClient().download_file(self.track.cdnurl, self.encrypted_file)
+            result = await http_client.download_file(
+                self.track.cdnurl, self.encrypted_file
+            )
+            if not result.success or result.file_path is None:
+                return types.Error(
+                    code=502, message=result.error or "Spotify download failed"
+                )
             await self.decrypt_audio()
             await rebuild_ogg(self.decrypted_file)
             await self.fix_audio()

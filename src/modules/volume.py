@@ -25,9 +25,11 @@ async def volume(c: Client, msg: types.Message) -> None:
         msg (types.Message): The message object containing the command.
     """
     chat_id = msg.chat_id
+    if chat_id is None:
+        return
     if not chat_cache.is_active(chat_id):
         await msg.reply_text("⏸ No active playback session")
-        return None
+        return
 
     args = extract_argument(msg.text, enforce_digit=True)
     if not args:
@@ -37,26 +39,27 @@ async def volume(c: Client, msg: types.Message) -> None:
             "Example: <code>/volume 80</code> for 80% volume\n"
             "Use <code>/volume 0</code> to mute"
         )
-        return None
+        return
 
     try:
         vol_int = int(args)
     except ValueError:
         await msg.reply_text("⚠️ Please enter a valid number between 1 and 200")
-        return None
+        return
 
-    if vol_int == 0:
-        await msg.reply_text(f"🔇 Playback muted by {await msg.mention()}")
-        return None
-
-    if not 1 <= vol_int <= 200:
+    if not 0 <= vol_int <= 200:
         await msg.reply_text("⚠️ Volume must be between 1% and 200%")
-        return None
+        return
 
     done = await call.change_volume(chat_id, vol_int)
     if isinstance(done, types.Error):
         await msg.reply_text(f"⚠️ <b>Error:</b> {done.message}")
-        return None
+        return
 
-    await msg.reply_text(f"🔊 Volume set to <b>{vol_int}%</b> by {await msg.mention()}")
-    return None
+    if vol_int == 0:
+        await msg.reply_text(f"🔇 Playback muted by {await msg.mention()}")
+    else:
+        await msg.reply_text(
+            f"🔊 Volume set to <b>{vol_int}%</b> by {await msg.mention()}"
+        )
+    return

@@ -3,7 +3,6 @@
 #  Part of the TgMusicBot project. All rights reserved where applicable.
 
 from pathlib import Path
-from typing import Union, List, Optional
 
 from pydantic import BaseModel
 
@@ -28,34 +27,38 @@ class CachedTrack(BaseModel):
     name: str
     loop: int
     user: str
-    file_path: Union[str, Path]
+    file_path: str | Path
     thumbnail: str
     track_id: str
     duration: int = 0
     is_video: bool
     platform: str
 
+
 class TrackInfo(BaseModel):
     """Holds detailed information about a specific track."""
+
     id: str
     url: str
     cdnurl: str
-    key: Optional[str] = None
+    key: str | None = None
     platform: str
 
 
 class MusicTrack(BaseModel):
     """Represents a single music track returned from a search query."""
+
     title: str
     id: str
     url: str
     thumbnail: str
     duration: int
-    channel: Optional[str]
-    views: Optional[str]
+    channel: str | None
+    views: str | None
     platform: str
 
 
 class PlatformTracks(BaseModel):
     """Collection of music tracks."""
-    results: List[MusicTrack]
+
+    results: list[MusicTrack]
